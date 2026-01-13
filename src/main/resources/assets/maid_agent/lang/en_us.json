@@ -1,0 +1,4 @@
+{
+    "task.maid_agent.agent": "Agent",
+    "task.maid_agent.agent.desc": "The maid will act as an autonomous agent."
+}
