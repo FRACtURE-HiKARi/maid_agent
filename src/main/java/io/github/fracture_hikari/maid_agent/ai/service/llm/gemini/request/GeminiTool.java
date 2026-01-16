@@ -1,32 +1,25 @@
 package io.github.fracture_hikari.maid_agent.ai.service.llm.gemini.request;
 
-import com.google.common.collect.Lists;
 import com.google.gson.annotations.SerializedName;
 
 import java.util.List;
 
 /**
- * Tool definition for Gemini API.
- * Contains function declarations for function calling capability.
+ * Gemini API Tool object containing function declarations.
  */
 public class GeminiTool {
     @SerializedName("functionDeclarations")
-    private List<GeminiFunctionDeclaration> functionDeclarations = Lists.newArrayList();
+    private List<GeminiFunctionDeclaration> functionDeclarations;
 
-    public static GeminiTool create() {
-        return new GeminiTool();
+    public GeminiTool(List<GeminiFunctionDeclaration> functionDeclarations) {
+        this.functionDeclarations = functionDeclarations;
     }
 
-    public GeminiTool addFunctionDeclaration(GeminiFunctionDeclaration declaration) {
-        this.functionDeclarations.add(declaration);
-        return this;
+    public static GeminiTool create(List<GeminiFunctionDeclaration> declarations) {
+        return new GeminiTool(declarations);
     }
 
     public List<GeminiFunctionDeclaration> getFunctionDeclarations() {
         return functionDeclarations;
-    }
-
-    public boolean isEmpty() {
-        return functionDeclarations.isEmpty();
     }
 }

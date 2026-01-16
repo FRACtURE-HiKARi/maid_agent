@@ -3,7 +3,7 @@ package io.github.fracture_hikari.maid_agent.ai.service.llm.gemini.response;
 import com.google.gson.annotations.SerializedName;
 
 /**
- * Token usage metadata from Gemini API response.
+ * Gemini API UsageMetadata for token counting.
  */
 public class GeminiUsageMetadata {
     @SerializedName("promptTokenCount")

@@ -1,47 +1,41 @@
 package io.github.fracture_hikari.maid_agent.ai.service.llm.gemini.request;
 
-import com.google.common.collect.Lists;
 import com.google.gson.annotations.SerializedName;
 
+import javax.annotation.Nullable;
 import java.util.List;
 
 /**
- * Content object for Gemini API request.
- * Represents a message in the conversation with a role and parts.
+ * Gemini API Content object representing a message turn.
  */
 public class GeminiContent {
     @SerializedName("role")
     private String role;
 
     @SerializedName("parts")
-    private List<GeminiPart> parts = Lists.newArrayList();
+    private List<GeminiPart> parts;
 
-    private GeminiContent(String role) {
-        this.role = role;
-    }
-
-    public static GeminiContent user(String text) {
-        GeminiContent content = new GeminiContent("user");
-        content.parts.add(GeminiPart.text(text));
+    public static GeminiContent create(String role, List<GeminiPart> parts) {
+        GeminiContent content = new GeminiContent();
+        content.role = role;
+        content.parts = parts;
         return content;
     }
 
-    public static GeminiContent model(String text) {
-        GeminiContent content = new GeminiContent("model");
-        content.parts.add(GeminiPart.text(text));
-        return content;
+    public static GeminiContent userContent(String text) {
+        return create("user", List.of(GeminiPart.fromText(text)));
     }
 
-    public static GeminiContent modelWithFunctionCall(String name, String args) {
-        GeminiContent content = new GeminiContent("model");
-        content.parts.add(GeminiPart.functionCall(name, args));
-        return content;
+    public static GeminiContent modelContent(String text) {
+        return create("model", List.of(GeminiPart.fromText(text)));
     }
 
-    public static GeminiContent functionResponse(String name, String response) {
-        GeminiContent content = new GeminiContent("user");
-        content.parts.add(GeminiPart.functionResponse(name, response));
-        return content;
+    public static GeminiContent functionCallContent(String name, String args) {
+        return create("model", List.of(GeminiPart.fromFunctionCall(name, args)));
+    }
+
+    public static GeminiContent functionResponseContent(String name, String response) {
+        return create("user", List.of(GeminiPart.fromFunctionResponse(name, response)));
     }
 
     public String getRole() {
@@ -52,8 +46,11 @@ public class GeminiContent {
         return parts;
     }
 
-    public GeminiContent addPart(GeminiPart part) {
-        this.parts.add(part);
-        return this;
+    @Nullable
+    public String getText() {
+        if (parts != null && !parts.isEmpty()) {
+            return parts.get(0).getText();
+        }
+        return null;
     }
 }

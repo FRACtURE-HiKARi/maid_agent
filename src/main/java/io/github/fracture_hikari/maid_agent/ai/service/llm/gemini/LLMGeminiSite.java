@@ -55,7 +55,7 @@ public final class LLMGeminiSite implements LLMSite, SupportModelSelect {
 
     @Override
     public LLMClient client() {
-        return new LLMGeminiClient(this);
+        return new LLMGeminiClient(LLM_HTTP_CLIENT, this);
     }
 
     @Override

@@ -3,9 +3,11 @@ package io.github.fracture_hikari.maid_agent.ai.service.llm.gemini.request;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.Parameter;
 import com.google.gson.annotations.SerializedName;
 
+import javax.annotation.Nullable;
+
 /**
- * Function declaration for Gemini API function calling.
- * Defines a function the model can invoke.
+ * Gemini API FunctionDeclaration for defining callable functions.
+ * Uses TLM's Parameter schema system for proper JSON Schema generation.
  */
 public class GeminiFunctionDeclaration {
     @SerializedName("name")
@@ -15,25 +17,21 @@ public class GeminiFunctionDeclaration {
     private String description;
 
     @SerializedName("parameters")
+    @Nullable
     private Parameter parameters;
 
-    public static GeminiFunctionDeclaration create() {
-        return new GeminiFunctionDeclaration();
-    }
-
-    public GeminiFunctionDeclaration setName(String name) {
+    public GeminiFunctionDeclaration(String name, String description, Parameter parameters) {
         this.name = name;
-        return this;
-    }
-
-    public GeminiFunctionDeclaration setDescription(String description) {
         this.description = description;
-        return this;
+        this.parameters = parameters;
     }
 
-    public GeminiFunctionDeclaration setParameters(Parameter parameters) {
-        this.parameters = parameters;
-        return this;
+    public static GeminiFunctionDeclaration create(String name, String description) {
+        return new GeminiFunctionDeclaration(name, description, null);
+    }
+
+    public static GeminiFunctionDeclaration create(String name, String description, Parameter parameters) {
+        return new GeminiFunctionDeclaration(name, description, parameters);
     }
 
     public String getName() {
@@ -44,7 +42,9 @@ public class GeminiFunctionDeclaration {
         return description;
     }
 
+    @Nullable
     public Parameter getParameters() {
         return parameters;
     }
 }
+

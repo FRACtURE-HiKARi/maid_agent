@@ -3,10 +3,10 @@ package io.github.fracture_hikari.maid_agent.ai.service.llm.gemini.request;
 import com.google.gson.annotations.SerializedName;
 
 import javax.annotation.Nullable;
+import java.util.Map;
 
 /**
- * Part object for Gemini API request.
- * Contains text content or function call/response data.
+ * Gemini API Part object - can contain text, functionCall, or functionResponse.
  */
 public class GeminiPart {
     @SerializedName("text")
@@ -15,25 +15,25 @@ public class GeminiPart {
 
     @SerializedName("functionCall")
     @Nullable
-    private GeminiFunctionCallRequest functionCall;
+    private GeminiFunctionCall functionCall;
 
     @SerializedName("functionResponse")
     @Nullable
     private GeminiFunctionResponse functionResponse;
 
-    public static GeminiPart text(String text) {
+    public static GeminiPart fromText(String text) {
         GeminiPart part = new GeminiPart();
         part.text = text;
         return part;
     }
 
-    public static GeminiPart functionCall(String name, String args) {
+    public static GeminiPart fromFunctionCall(String name, String args) {
         GeminiPart part = new GeminiPart();
-        part.functionCall = new GeminiFunctionCallRequest(name, args);
+        part.functionCall = new GeminiFunctionCall(name, args);
         return part;
     }
 
-    public static GeminiPart functionResponse(String name, String response) {
+    public static GeminiPart fromFunctionResponse(String name, String response) {
         GeminiPart part = new GeminiPart();
         part.functionResponse = new GeminiFunctionResponse(name, response);
         return part;
@@ -45,7 +45,7 @@ public class GeminiPart {
     }
 
     @Nullable
-    public GeminiFunctionCallRequest getFunctionCall() {
+    public GeminiFunctionCall getFunctionCall() {
         return functionCall;
     }
 
@@ -54,50 +54,72 @@ public class GeminiPart {
         return functionResponse;
     }
 
+    public boolean hasFunctionCall() {
+        return functionCall != null;
+    }
+
     /**
-     * Function call request structure for Gemini API.
+     * FunctionCall nested object for model-initiated function calls.
      */
-    public static class GeminiFunctionCallRequest {
+    public static class GeminiFunctionCall {
         @SerializedName("name")
         private String name;
 
         @SerializedName("args")
-        private String args;
+        private Map<String, Object> args;
 
-        public GeminiFunctionCallRequest(String name, String args) {
+        // For deserialization
+        public GeminiFunctionCall() {}
+
+        public GeminiFunctionCall(String name, String argsJson) {
             this.name = name;
-            this.args = args;
+            // Parse args from JSON string to Map
+            try {
+                this.args = com.github.tartaricacid.touhoulittlemaid.ai.service.Client.GSON
+                        .fromJson(argsJson, new com.google.gson.reflect.TypeToken<Map<String, Object>>(){}.getType());
+            } catch (Exception e) {
+                this.args = Map.of("raw", argsJson);
+            }
         }
 
         public String getName() {
             return name;
         }
 
-        public String getArgs() {
+        public Map<String, Object> getArgs() {
             return args;
+        }
+
+        public String getArgsAsJson() {
+            if (args == null) {
+                return "{}";
+            }
+            return com.github.tartaricacid.touhoulittlemaid.ai.service.Client.GSON.toJson(args);
         }
     }
 
     /**
-     * Function response structure for Gemini API.
+     * FunctionResponse nested object for tool results.
      */
     public static class GeminiFunctionResponse {
         @SerializedName("name")
         private String name;
 
         @SerializedName("response")
-        private String response;
+        private Map<String, Object> response;
 
-        public GeminiFunctionResponse(String name, String response) {
+        public GeminiFunctionResponse() {}
+
+        public GeminiFunctionResponse(String name, String result) {
             this.name = name;
-            this.response = response;
+            this.response = Map.of("result", result);
         }
 
         public String getName() {
             return name;
         }
 
-        public String getResponse() {
+        public Map<String, Object> getResponse() {
             return response;
         }
     }

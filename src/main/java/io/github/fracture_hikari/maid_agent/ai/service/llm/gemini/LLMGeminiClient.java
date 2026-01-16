@@ -16,33 +16,35 @@ import com.github.tartaricacid.touhoulittlemaid.capability.ChatTokensCapabilityP
 import com.github.tartaricacid.touhoulittlemaid.config.subconfig.AIConfig;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.google.common.collect.Lists;
-import com.google.genai.Client;
-import com.google.genai.types.*;
+import com.google.common.net.HttpHeaders;
+import com.google.common.net.MediaType;
 import io.github.fracture_hikari.maid_agent.MaidAgent;
+import io.github.fracture_hikari.maid_agent.ai.service.llm.gemini.request.*;
+import io.github.fracture_hikari.maid_agent.ai.service.llm.gemini.response.GeminiResponse;
 import net.minecraft.server.level.ServerPlayer;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.http.HttpException;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
- * Gemini API client using Google's official GenAI SDK.
+ * Gemini API client using HTTP requests.
  * Implements the LLMClient interface following the OpenAI client pattern.
  */
 public final class LLMGeminiClient implements LLMClient {
+    private static final Duration MAX_TIMEOUT = Duration.ofSeconds(60);
 
+    private final HttpClient httpClient;
     private final LLMGeminiSite site;
-    private final Client client;
 
-    public LLMGeminiClient(LLMGeminiSite site) {
+    public LLMGeminiClient(HttpClient httpClient, LLMGeminiSite site) {
+        this.httpClient = httpClient;
         this.site = site;
-        // Initialize the Google GenAI client with API key
-        this.client = Client.builder()
-                .apiKey(site.secretKey())
-                .build();
     }
 
     @Override
@@ -53,178 +55,83 @@ public final class LLMGeminiClient implements LLMClient {
         EntityMaid maid = config.maid();
         ChatType chatType = config.chatType();
 
-        // Run the API call asynchronously
-        CompletableFuture.runAsync(() -> {
-            try {
-                // Build contents from messages
-                List<Content> contents = buildContents(messages);
-
-                // Build generation config
-                GenerateContentConfig.Builder configBuilder = GenerateContentConfig.builder()
-                        .temperature((float) temperature)
-                        .maxOutputTokens(maxTokens);
-
-                // Add system instruction if present
-                String systemInstruction = extractSystemInstruction(messages);
-                if (systemInstruction != null) {
-                    configBuilder.systemInstruction(Content.fromParts(Part.fromText(systemInstruction)));
-                }
-
-                // Add function call tools if enabled
-                if (AIConfig.FUNCTION_CALL_ENABLED.get() && chatType != ChatType.AUTO_GEN_SETTING) {
-                    List<Tool> tools = buildFunctionTools(maid);
-                    if (!tools.isEmpty()) {
-                        configBuilder.tools(tools);
-                    }
-                }
-
-                GenerateContentConfig genConfig = configBuilder.build();
-
-                if (TouhouLittleMaid.DEBUG) {
-                    MaidAgent.LOGGER.info("Gemini Request - Model: {}, Contents: {}", model, contents.size());
-                }
-
-                // Make the API call using the SDK
-                GenerateContentResponse response = client.models.generateContent(model, contents, genConfig);
-
-                if (TouhouLittleMaid.DEBUG) {
-                    MaidAgent.LOGGER.info("Gemini Response: {}", response.text());
-                }
-
-                // Handle token counting
-                if (response.usageMetadata().isPresent()) {
-                    int totalTokens = response.usageMetadata().get().totalTokenCount().orElse(0);
-                    if (totalTokens > 0 && config.maid().getOwner() instanceof ServerPlayer serverPlayer) {
-                        serverPlayer.getCapability(ChatTokensCapabilityProvider.CHAT_TOKENS_CAP)
-                                .ifPresent(tokens -> tokens.addCount(totalTokens));
-                    }
-                }
-
-                // Process the response
-                if (response.candidates().isEmpty() || response.candidates().isEmpty()) {
-                    callback.onFailure(null, new Throwable("No candidates in response"),
-                            ErrorCode.CHAT_CHOICE_IS_EMPTY);
-                    return;
-                }
-
-                List<Candidate> candidateList = response.candidates().get();
-                Content content = candidateList.get(0).content().orElse(null);
-
-                if (content == null || content.parts().isEmpty() || content.parts().isEmpty()) {
-                    callback.onSuccess(new ResponseChat(StringUtils.EMPTY, StringUtils.EMPTY));
-                    return;
-                }
-
-                // Check for function calls
-                for (Part part : content.parts().get()) {
-                    if (part.functionCall().isPresent()) {
-                        FunctionCall fc = part.functionCall().get();
-                        Message compatMessage = createCompatibleMessage(fc);
-                        ((LLMCallback) callback).onFunctionCall(compatMessage, messages, config, this);
-                        return;
-                    }
-                }
-
-                // Handle text response
-                String text = response.text();
-                if (StringUtils.isBlank(text)) {
-                    callback.onSuccess(new ResponseChat(StringUtils.EMPTY, StringUtils.EMPTY));
-                } else {
-                    callback.onSuccess(new ResponseChat(text));
-                }
-
-            } catch (Exception e) {
-                MaidAgent.LOGGER.error("Gemini API error", e);
-                callback.onFailure(null, e, ErrorCode.REQUEST_SENDING_ERROR);
-            }
-        });
-    }
-
-    /**
-     * Extract system instruction from messages.
-     */
-    private String extractSystemInstruction(List<LLMMessage> messages) {
-        for (LLMMessage message : messages) {
-            if (message.role() == Role.SYSTEM) {
-                return message.message();
-            }
+        // Build the API URL: {baseUrl}/{model}:generateContent?key={apiKey}
+        String baseUrl = this.site.url();
+        if (!baseUrl.endsWith("/")) {
+            baseUrl = baseUrl + "/";
         }
-        return null;
+        URI url = URI.create(baseUrl + model + ":generateContent?key=" + this.site.secretKey());
+
+        // Build the request body
+        GeminiRequest geminiRequest = buildRequest(messages, temperature, maxTokens, maid, chatType);
+
+        String requestJson = GSON.toJson(geminiRequest);
+
+        if (TouhouLittleMaid.DEBUG) {
+            MaidAgent.LOGGER.info("Chat messages: {}", messages);
+            MaidAgent.LOGGER.info("Gemini Request: {}", requestJson);
+        }
+
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.JSON_UTF_8.toString())
+                .POST(HttpRequest.BodyPublishers.ofString(requestJson))
+                .timeout(MAX_TIMEOUT)
+                .uri(url);
+
+        this.site.headers().forEach(builder::header);
+        HttpRequest httpRequest = builder.build();
+
+        httpClient.sendAsync(httpRequest, HttpResponse.BodyHandlers.ofString())
+                .whenComplete((response, throwable) ->
+                        handle(messages, config, callback, response, throwable, httpRequest));
     }
 
-    /**
-     * Build Content list from LLMMessage list.
-     */
-    private List<Content> buildContents(List<LLMMessage> messages) {
-        List<Content> contents = new ArrayList<>();
+    private GeminiRequest buildRequest(List<LLMMessage> messages, double temperature, int maxTokens,
+                                        EntityMaid maid, ChatType chatType) {
+        GeminiRequest request = GeminiRequest.create();
 
+        // Set generation config
+        request.generationConfig(GeminiGenerationConfig.create()
+                .temperature(temperature)
+                .maxOutputTokens(maxTokens));
+
+        // Extract system instruction and add other messages
         for (LLMMessage message : messages) {
-            // Skip system messages (handled separately as systemInstruction)
             if (message.role() == Role.SYSTEM) {
-                continue;
-            }
-
-            String role = mapRole(message.role());
-
-            if (message.role() == Role.USER) {
-                contents.add(Content.builder()
-                        .role(role)
-                        .parts(List.of(Part.fromText(message.message())))
-                        .build());
+                request.systemInstruction(message.message());
+            } else if (message.role() == Role.USER) {
+                request.addUserMessage(message.message());
             } else if (message.role() == Role.ASSISTANT) {
                 if (message.toolCalls() == null || message.toolCalls().isEmpty()) {
-                    contents.add(Content.builder()
-                            .role(role)
-                            .parts(List.of(Part.fromText(message.message())))
-                            .build());
+                    request.addModelMessage(message.message());
                 } else {
                     // Handle assistant message with tool calls
-                    List<Part> parts = new ArrayList<>();
                     for (ToolCall toolCall : message.toolCalls()) {
                         if (toolCall.getFunction() != null) {
-                            parts.add(Part.builder()
-                                    .functionCall(FunctionCall.builder()
-                                            .name(toolCall.getFunction().getName())
-                                            .args(Map.of("args", toolCall.getFunction().getArguments()))
-                                            .build())
-                                    .build());
+                            request.addFunctionCall(
+                                    toolCall.getFunction().getName(),
+                                    toolCall.getFunction().getArguments());
                         }
                     }
-                    contents.add(Content.builder().role(role).parts(parts).build());
                 }
             } else if (message.role() == Role.TOOL) {
-                // Tool response
-                contents.add(Content.builder()
-                        .role("user")
-                        .parts(List.of(Part.builder()
-                                .functionResponse(FunctionResponse.builder()
-                                        .name(message.toolCallId())
-                                        .response(Map.of("result", message.message()))
-                                        .build())
-                                .build()))
-                        .build());
+                request.addFunctionResponse(message.toolCallId(), message.message());
             }
         }
 
-        return contents;
+        // Add function call tools if enabled
+        if (AIConfig.FUNCTION_CALL_ENABLED.get() && chatType != ChatType.AUTO_GEN_SETTING) {
+            List<GeminiFunctionDeclaration> declarations = buildFunctionDeclarations(maid);
+            if (!declarations.isEmpty()) {
+                request.addTool(GeminiTool.create(declarations));
+            }
+        }
+
+        return request;
     }
 
-    /**
-     * Map LLMMessage role to Gemini role.
-     */
-    private String mapRole(Role role) {
-        return switch (role) {
-            case USER, TOOL -> "user";
-            case ASSISTANT -> "model";
-            case SYSTEM -> "user"; // System handled separately
-        };
-    }
-
-    /**
-     * Build function tools from registered function calls.
-     */
-    private List<Tool> buildFunctionTools(EntityMaid maid) {
-        List<FunctionDeclaration> declarations = new ArrayList<>();
+    private List<GeminiFunctionDeclaration> buildFunctionDeclarations(EntityMaid maid) {
+        List<GeminiFunctionDeclaration> declarations = new ArrayList<>();
 
         FunctionCallRegister.getFunctionCalls().forEach((key, value) -> {
             if (!value.addToChatCompletion(maid, null)) {
@@ -235,57 +142,72 @@ public final class LLMGeminiClient implements LLMClient {
             ObjectParameter root = ObjectParameter.create();
             Parameter parameter = value.addParameters(root, maid);
 
-            // Convert parameter to Schema
-            Schema schema = convertParameterToSchema(parameter);
-
-            FunctionDeclaration declaration = FunctionDeclaration.builder()
-                    .name(id)
-                    .description(description)
-                    .parameters(schema)
-                    .build();
-
-            declarations.add(declaration);
+            // Use TLM's Parameter directly - it serializes to JSON Schema format via GSON
+            declarations.add(GeminiFunctionDeclaration.create(id, description, parameter));
         });
 
-        if (declarations.isEmpty()) {
-            return List.of();
-        }
+        return declarations;
+    }
 
-        return List.of(Tool.builder().functionDeclarations(declarations).build());
+    private void handle(List<LLMMessage> messages, LLMConfig config, ResponseCallback<ResponseChat> callback,
+                        HttpResponse<String> response, Throwable throwable, HttpRequest request) {
+        this.<GeminiResponse>handleResponse(callback, response, throwable, request, geminiResponse -> {
+            if (TouhouLittleMaid.DEBUG) {
+                MaidAgent.LOGGER.info("Gemini Response: {}", GSON.toJson(geminiResponse));
+            }
+
+            // token counting
+            if (geminiResponse.getUsageMetadata() != null) {
+                int totalTokens = geminiResponse.getUsageMetadata().getTotalTokenCount();
+                if (totalTokens > 0 && config.maid().getOwner() instanceof ServerPlayer serverPlayer) {
+                    serverPlayer.getCapability(ChatTokensCapabilityProvider.CHAT_TOKENS_CAP)
+                            .ifPresent(tokens -> tokens.addCount(totalTokens));
+                }
+            }
+
+            // Check if response has candidates
+            if (geminiResponse.getCandidates() == null || geminiResponse.getCandidates().isEmpty()) {
+                callback.onFailure(request, new Throwable("No candidates in response"),
+                        ErrorCode.CHAT_CHOICE_IS_EMPTY);
+                return;
+            }
+
+            // Check for function calls
+            if (geminiResponse.hasFunctionCall()) {
+                GeminiPart.GeminiFunctionCall fc = geminiResponse.getFirstFunctionCall();
+                if (fc != null) {
+                    Message compatMessage = createCompatibleMessage(fc);
+                    ((LLMCallback) callback).onFunctionCall(compatMessage, messages, config, this);
+                }
+            } else {
+                String text = geminiResponse.getText();
+                if (StringUtils.isBlank(text)) {
+                    callback.onSuccess(new ResponseChat(StringUtils.EMPTY, StringUtils.EMPTY));
+                    return;
+                }
+                callback.onSuccess(new ResponseChat(text));
+            }
+        }, GeminiResponse.class);
     }
 
     /**
-     * Convert TLM Parameter to Gemini Schema.
+     * Create a Message compatible with the OpenAI format for function call handling.
      */
-    private Schema convertParameterToSchema(Parameter parameter) {
-        // Basic conversion - may need enhancement based on parameter types
-        return Schema.builder()
-                .type(Type.Known.OBJECT)
-                .build();
-    }
-
-    /**
-     * Create a Message compatible with the OpenAI format for function call
-     * handling.
-     */
-    private Message createCompatibleMessage(FunctionCall functionCall) {
+    private Message createCompatibleMessage(GeminiPart.GeminiFunctionCall functionCall) {
         return new GeminiCompatibleMessage(functionCall);
     }
 
     /**
-     * Adapter class to make Gemini function calls compatible with OpenAI Message
-     * format.
+     * Adapter class to make Gemini function calls compatible with OpenAI Message format.
      */
     public static class GeminiCompatibleMessage extends Message {
         private final List<ToolCall> toolCalls;
 
-        public GeminiCompatibleMessage(FunctionCall functionCall) {
+        public GeminiCompatibleMessage(GeminiPart.GeminiFunctionCall functionCall) {
             this.toolCalls = Lists.newArrayList();
             String id = "call_gemini_" + System.currentTimeMillis();
-            String args = functionCall.args().map(Object::toString).orElse("{}");
-            FunctionToolCall ftc = new FunctionToolCall(
-                    functionCall.name().orElse("unknown"),
-                    args);
+            String args = functionCall.getArgsAsJson();
+            FunctionToolCall ftc = new FunctionToolCall(functionCall.getName(), args);
             this.toolCalls.add(new ToolCall(id, ftc));
         }
 
