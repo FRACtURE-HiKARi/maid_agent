@@ -2,13 +2,16 @@ package io.github.fracture_hikari.maid_agent.maid;
 
 import com.github.tartaricacid.touhoulittlemaid.ai.service.SerializerRegister;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.ServiceType;
+import com.github.tartaricacid.touhoulittlemaid.ai.service.function.FunctionCallRegister;
 import com.github.tartaricacid.touhoulittlemaid.api.ILittleMaid;
 import com.github.tartaricacid.touhoulittlemaid.api.LittleMaidExtension;
 import com.github.tartaricacid.touhoulittlemaid.entity.task.TaskManager;
+import io.github.fracture_hikari.maid_agent.MaidAgent;
+import io.github.fracture_hikari.maid_agent.ai.service.function.ItemSearchFunction;
+import io.github.fracture_hikari.maid_agent.ai.service.function.RecipeSearchFunction;
+import io.github.fracture_hikari.maid_agent.ai.service.llm.claude.LLMClaudeSite;
 import io.github.fracture_hikari.maid_agent.ai.service.llm.gemini.LLMGeminiSite;
 import io.github.fracture_hikari.maid_agent.maid.task.AgentTask;
-import org.apache.logging.log4j.Logger;
-import io.github.fracture_hikari.maid_agent.MaidAgent;
 
 /**
  * Extension class that hooks into TouhouLittleMaid.
@@ -27,21 +30,20 @@ public class MaidExtension implements ILittleMaid {
         manager.add(new AgentTask());
     }
 
-
-
     @Override
     public void registerAIChatSerializer(SerializerRegister register) {
         MaidAgent.LOGGER.info("Registering Gemini LLM serializer...");
         register.register(ServiceType.LLM, LLMGeminiSite.API_TYPE, new LLMGeminiSite.Serializer());
+        
+        MaidAgent.LOGGER.info("Registering Claude LLM serializer...");
+        register.register(ServiceType.LLM, LLMClaudeSite.API_TYPE, new LLMClaudeSite.Serializer());
     }
 
-    // You can override more methods from ILittleMaid to add:
-    // - bindMaidBauble() - Custom baubles/accessories
-    // - addMaidBackpack() - Custom backpack types
-    // - addExtraMaidBrain() - Extra memory modules for AI state
-    // - registerTaskData() - Custom data storage on maids
-    // - registerAIFunctionCall() - AI-driven function calls
-    // - registerChatBubble() - Custom chat bubble types
-    // - addMaidTips() - UI tooltip overlays
-
+    @Override
+    public void registerAIFunctionCall(FunctionCallRegister register) {
+        MaidAgent.LOGGER.info("Registering JEI function calls...");
+        register.register(new ItemSearchFunction());
+        register.register(new RecipeSearchFunction());
+    }
 }
+

@@ -95,6 +95,20 @@ public final class LLMGeminiClient implements LLMClient {
                 .temperature(temperature)
                 .maxOutputTokens(maxTokens));
 
+        // Build a map of toolCallId -> functionName from assistant messages
+        // This is needed because Gemini expects function name in functionResponse,
+        // but TLM stores only the toolCallId for TOOL role messages
+        java.util.Map<String, String> toolCallIdToFunctionName = new java.util.HashMap<>();
+        for (LLMMessage message : messages) {
+            if (message.role() == Role.ASSISTANT && message.toolCalls() != null) {
+                for (ToolCall toolCall : message.toolCalls()) {
+                    if (toolCall.getId() != null && toolCall.getFunction() != null) {
+                        toolCallIdToFunctionName.put(toolCall.getId(), toolCall.getFunction().getName());
+                    }
+                }
+            }
+        }
+
         // Extract system instruction and add other messages
         for (LLMMessage message : messages) {
             if (message.role() == Role.SYSTEM) {
@@ -115,7 +129,11 @@ public final class LLMGeminiClient implements LLMClient {
                     }
                 }
             } else if (message.role() == Role.TOOL) {
-                request.addFunctionResponse(message.toolCallId(), message.message());
+                // Gemini expects the function NAME, not the call ID
+                String functionName = toolCallIdToFunctionName.getOrDefault(
+                        message.toolCallId(), 
+                        message.toolCallId()); // Fallback to ID if name not found
+                request.addFunctionResponse(functionName, message.message());
             }
         }
 
@@ -129,6 +147,7 @@ public final class LLMGeminiClient implements LLMClient {
 
         return request;
     }
+
 
     private List<GeminiFunctionDeclaration> buildFunctionDeclarations(EntityMaid maid) {
         List<GeminiFunctionDeclaration> declarations = new ArrayList<>();
@@ -167,6 +186,19 @@ public final class LLMGeminiClient implements LLMClient {
 
             // Check if response has candidates
             if (geminiResponse.getCandidates() == null || geminiResponse.getCandidates().isEmpty()) {
+                // Empty candidates can happen after function call results
+                // Check if this is a follow-up to a function call by looking at message history
+                boolean hadFunctionCall = messages.stream().anyMatch(m -> m.role() == Role.TOOL);
+                if (hadFunctionCall) {
+                    // Provide a fallback response using the last tool message
+                    String lastToolMessage = messages.stream()
+                            .filter(m -> m.role() == Role.TOOL)
+                            .reduce((first, second) -> second)
+                            .map(LLMMessage::message)
+                            .orElse("Task completed.");
+                    callback.onSuccess(new ResponseChat(lastToolMessage));
+                    return;
+                }
                 callback.onFailure(request, new Throwable("No candidates in response"),
                         ErrorCode.CHAT_CHOICE_IS_EMPTY);
                 return;
@@ -182,6 +214,19 @@ public final class LLMGeminiClient implements LLMClient {
             } else {
                 String text = geminiResponse.getText();
                 if (StringUtils.isBlank(text)) {
+                    // Empty text can happen after function call results
+                    // Check if this is a follow-up to a function call
+                    boolean hadFunctionCall = messages.stream().anyMatch(m -> m.role() == Role.TOOL);
+                    if (hadFunctionCall) {
+                        // Provide a fallback response using the last tool message
+                        String lastToolMessage = messages.stream()
+                                .filter(m -> m.role() == Role.TOOL)
+                                .reduce((first, second) -> second)
+                                .map(LLMMessage::message)
+                                .orElse("Task completed.");
+                        callback.onSuccess(new ResponseChat(lastToolMessage));
+                        return;
+                    }
                     callback.onSuccess(new ResponseChat(StringUtils.EMPTY, StringUtils.EMPTY));
                     return;
                 }
@@ -189,6 +234,7 @@ public final class LLMGeminiClient implements LLMClient {
             }
         }, GeminiResponse.class);
     }
+
 
     /**
      * Create a Message compatible with the OpenAI format for function call handling.

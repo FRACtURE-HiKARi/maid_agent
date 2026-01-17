@@ -1,4 +1,20 @@
 {
-    "task.maid_agent.agent": "特工",
-    "task.maid_agent.agent.desc": "女仆将作为自主特工行动。"
+    "task.maid_agent.agent": "代理",
+    "task.maid_agent.agent.desc": "女仆将作为自主代理行动。",
+    "config.maid_agent.category": "女仆代理",
+    "config.maid_agent.jei": "JEI 集成",
+    "config.maid_agent.jei.item_search_max": "物品搜索最大结果数",
+    "config.maid_agent.jei.item_search_max.tooltip": "物品搜索返回的最大数量。数值越大结果越多，但会消耗更多的LLM令牌。",
+    "config.maid_agent.jei.recipe_search_max": "配方搜索最大结果数",
+    "config.maid_agent.jei.recipe_search_max.tooltip": "配方搜索返回的最大数量。数值越大结果越多，但会消耗更多的LLM令牌。",
+    "function.maid_agent.jei_item_search": "JEI物品搜索",
+    "function.maid_agent.jei_item_search.desc": "使用JEI按关键字搜索物品。",
+    "function.maid_agent.jei_recipe_search": "JEI配方搜索",
+    "function.maid_agent.jei_recipe_search.desc": "使用JEI按原料和/或产物搜索配方。",
+    "message.maid_agent.jei_unavailable": "JEI不可用，无法搜索。",
+    "message.maid_agent.no_params": "你必须提供至少一个搜索参数。",
+    "message.maid_agent.item_not_found": "物品 '%s' 在注册表中未找到。",
+    "message.maid_agent.no_results": "没有找到符合条件的结果。",
+    "message.maid_agent.found_items": "找到 %d 个物品：",
+    "message.maid_agent.found_recipes": "找到 %d 个配方："
 }

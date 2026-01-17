@@ -1,4 +1,20 @@
 {
     "task.maid_agent.agent": "Agent",
-    "task.maid_agent.agent.desc": "The maid will act as an autonomous agent."
+    "task.maid_agent.agent.desc": "The maid will act as an autonomous agent.",
+    "config.maid_agent.category": "Maid Agent",
+    "config.maid_agent.jei": "JEI Integration",
+    "config.maid_agent.jei.item_search_max": "Item Search Max Results",
+    "config.maid_agent.jei.item_search_max.tooltip": "Maximum number of items returned by item search. Higher values provide more results but consume more LLM tokens.",
+    "config.maid_agent.jei.recipe_search_max": "Recipe Search Max Results",
+    "config.maid_agent.jei.recipe_search_max.tooltip": "Maximum number of recipes returned by recipe search. Higher values provide more results but consume more LLM tokens.",
+    "function.maid_agent.jei_item_search": "JEI Item Search",
+    "function.maid_agent.jei_item_search.desc": "Search for items by keyword using JEI.",
+    "function.maid_agent.jei_recipe_search": "JEI Recipe Search",
+    "function.maid_agent.jei_recipe_search.desc": "Search for recipes by ingredient and/or product using JEI.",
+    "message.maid_agent.jei_unavailable": "JEI is not available. Cannot search.",
+    "message.maid_agent.no_params": "You must provide at least one search parameter.",
+    "message.maid_agent.item_not_found": "Item '%s' not found in registry.",
+    "message.maid_agent.no_results": "No results found matching the criteria.",
+    "message.maid_agent.found_items": "Found %d item(s):",
+    "message.maid_agent.found_recipes": "Found %d recipe(s):"
 }

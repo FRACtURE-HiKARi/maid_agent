@@ -68,6 +68,10 @@ dependencies {
     // Current Only CurseForge Maven can support downloading both mod and source code, which is convenient for development
     implementation fg.deobf('curse.maven:touhou-little-maid-355044:6613821-sources-6613853')
     implementation fg.deobf('curse.maven:cloth-config-348521:5729105')
+    implementation fg.deobf('curse.maven:kotlin-for-forge-351264:5402061')
+    implementation fg.deobf('curse.maven:libipn-679177:5208511')
+    implementation fg.deobf('curse.maven:inventory-profiles-next-495267:4813458')
+    implementation fg.deobf('curse.maven:just-enough-items-238222:6600311')
 }
 
 processResources {
@@ -102,6 +106,8 @@ jar {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+    options.fork = true
+    options.forkOptions.jvmArgs += ['-Duser.language=en', '-Duser.country=US']
 }
 
 idea {
