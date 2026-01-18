@@ -12,8 +12,7 @@ import net.minecraft.resources.ResourceLocation;
  */
 @JeiPlugin
 public class MaidAgentJeiPlugin implements IModPlugin {
-    @SuppressWarnings("deprecation")
-    private static final ResourceLocation UID = new ResourceLocation(MaidAgent.MODID, "jei_plugin");
+    private static final ResourceLocation UID = ResourceLocation.fromNamespaceAndPath(MaidAgent.MODID, "jei_plugin");
 
     @Override
     public ResourceLocation getPluginUid() {

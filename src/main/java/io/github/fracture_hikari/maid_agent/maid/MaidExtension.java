@@ -5,18 +5,26 @@ import com.github.tartaricacid.touhoulittlemaid.ai.service.ServiceType;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.FunctionCallRegister;
 import com.github.tartaricacid.touhoulittlemaid.api.ILittleMaid;
 import com.github.tartaricacid.touhoulittlemaid.api.LittleMaidExtension;
+import com.github.tartaricacid.touhoulittlemaid.api.entity.ai.IExtraMaidBrain;
+import com.github.tartaricacid.touhoulittlemaid.entity.ai.brain.ExtraMaidBrainManager;
+import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.entity.task.TaskManager;
-import io.github.fracture_hikari.maid_agent.MaidAgent;
-import io.github.fracture_hikari.maid_agent.ai.service.function.ItemSearchFunction;
-import io.github.fracture_hikari.maid_agent.ai.service.function.RecipeSearchFunction;
+import com.mojang.datafixers.util.Pair;
+import io.github.fracture_hikari.maid_agent.ai.service.function.*;
 import io.github.fracture_hikari.maid_agent.ai.service.llm.claude.LLMClaudeSite;
 import io.github.fracture_hikari.maid_agent.ai.service.llm.gemini.LLMGeminiSite;
+import io.github.fracture_hikari.maid_agent.maid.behavior.StorageMoveTask;
+import io.github.fracture_hikari.maid_agent.maid.behavior.StorageWorkTask;
 import io.github.fracture_hikari.maid_agent.maid.task.AgentTask;
+import io.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
+import net.minecraft.world.entity.ai.behavior.BehaviorControl;
+import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+
+import java.util.List;
 
 /**
  * Extension class that hooks into TouhouLittleMaid.
- * This class is automatically discovered via the @LittleMaidExtension
- * annotation.
+ * This class is automatically discovered via the @LittleMaidExtension annotation.
  * TouhouLittleMaid scans for classes with this annotation at startup.
  */
 @LittleMaidExtension
@@ -32,18 +40,41 @@ public class MaidExtension implements ILittleMaid {
 
     @Override
     public void registerAIChatSerializer(SerializerRegister register) {
-        MaidAgent.LOGGER.info("Registering Gemini LLM serializer...");
         register.register(ServiceType.LLM, LLMGeminiSite.API_TYPE, new LLMGeminiSite.Serializer());
-        
-        MaidAgent.LOGGER.info("Registering Claude LLM serializer...");
         register.register(ServiceType.LLM, LLMClaudeSite.API_TYPE, new LLMClaudeSite.Serializer());
     }
 
     @Override
     public void registerAIFunctionCall(FunctionCallRegister register) {
-        MaidAgent.LOGGER.info("Registering JEI function calls...");
         register.register(new ItemSearchFunction());
         register.register(new RecipeSearchFunction());
+        register.register(new StorageItemsFunction());
+        register.register(new CraftItemFunction());
+        register.register(new GetInventoryFunction());
+        register.register(new GetNearbyStorageFunction());
+    }
+
+    @Override
+    public void addExtraMaidBrain(ExtraMaidBrainManager manager) {
+        manager.addExtraMaidBrain(new IExtraMaidBrain() {
+            @Override
+            public List<MemoryModuleType<?>> getExtraMemoryTypes() {
+                return List.of(
+                        MemoryModuleRegistry.PENDING_TASK.get(),
+                        MemoryModuleRegistry.VIEWED_STORAGE.get(),
+                        MemoryModuleRegistry.TASK_RESULT.get()
+                );
+            }
+
+            @Override
+            public List<Pair<Integer, BehaviorControl<? super EntityMaid>>> getWorkBehaviors() {
+                // These behaviors run during WORK activity for ALL maid task types
+                // Priority 5 = runs after core behaviors but before random walk
+                List<Pair<Integer, BehaviorControl<? super EntityMaid>>> list = new java.util.ArrayList<>();
+                list.add(Pair.of(5, new StorageMoveTask()));
+                list.add(Pair.of(5, new StorageWorkTask()));
+                return list;
+            }
+        });
     }
 }
-

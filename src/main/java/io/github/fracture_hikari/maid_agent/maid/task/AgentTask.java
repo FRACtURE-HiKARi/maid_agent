@@ -19,11 +19,10 @@ import java.util.List;
 /**
  * A custom maid task (job) for the agent functionality.
  * 
- * This is the core interface for defining what a maid does.
- * The task provides:
- * - A unique ID
- * - An icon for the task selection UI
- * - Brain behaviors (AI) that run when this task is active
+ * NOTE: Storage behaviors are now injected via IExtraMaidBrain.getWorkBehaviors()
+ * in MaidExtension.java, so they work for ALL task types.
+ * 
+ * This task is kept for compatibility but behaviors are now universal.
  */
 public class AgentTask implements IMaidTask {
 
@@ -37,11 +36,9 @@ public class AgentTask implements IMaidTask {
 
     /**
      * Icon shown in the task selection GUI.
-     * You can use any item as the icon.
      */
     @Override
     public @NotNull ItemStack getIcon() {
-        // TODO: Choose a more fitting icon or create a custom item
         return Items.ENDER_EYE.getDefaultInstance();
     }
 
@@ -57,71 +54,42 @@ public class AgentTask implements IMaidTask {
     /**
      * Create the AI behaviors for this task.
      * 
-     * Each Pair contains:
-     * - Integer: Priority (lower = higher priority, runs first)
-     * - BehaviorControl: The actual behavior logic
-     * 
-     * Behaviors run during the WORK activity when this task is selected.
+     * Storage behaviors are now registered via IExtraMaidBrain.getWorkBehaviors()
+     * so they work universally for all task types.
      * 
      * @param maid The maid entity
-     * @return List of prioritized behaviors
+     * @return List of task-specific behaviors (empty - using universal behaviors)
      */
     @Override
     public @NotNull List<Pair<Integer, BehaviorControl<? super EntityMaid>>> createBrainTasks(EntityMaid maid) {
-        ArrayList<Pair<Integer, BehaviorControl<? super EntityMaid>>> list = new ArrayList<>();
-
-        // TODO: Add your custom behaviors here
-        // Example:
-        // list.add(Pair.of(10, new AgentMoveBehavior()));
-        // list.add(Pair.of(10, new AgentWorkBehavior()));
-
-        return list;
+        // Behaviors are now injected via IExtraMaidBrain.getWorkBehaviors()
+        // See MaidExtension.java
+        return new ArrayList<>();
     }
 
     /**
-     * Behaviors that run when the maid is riding something (vehicle, seat, etc.)
-     * These behaviors cannot make the maid move - only stationary actions.
+     * Behaviors that run when the maid is riding something.
      */
     @Override
     public List<Pair<Integer, BehaviorControl<? super EntityMaid>>> createRideBrainTasks(EntityMaid maid) {
-        ArrayList<Pair<Integer, BehaviorControl<? super EntityMaid>>> list = new ArrayList<>();
-
-        // TODO: Add ride-mode behaviors if needed
-
-        return list;
+        return new ArrayList<>();
     }
 
-    /**
-     * Whether this task is currently available for selection.
-     * You can add conditions here (e.g., require a specific item).
-     */
     @Override
     public boolean isEnable(EntityMaid maid) {
-        return true; // Always available
+        return true;
     }
 
-    /**
-     * Whether random walking/looking is enabled during this task.
-     * Set to false if the maid needs to focus on specific work.
-     */
     @Override
     public boolean enableLookAndRandomWalk(@NotNull EntityMaid maid) {
         return true;
     }
 
-    /**
-     * Whether panic behavior (running when hurt) is enabled.
-     * Combat tasks typically disable this.
-     */
     @Override
     public boolean enablePanic(@NotNull EntityMaid maid) {
         return true;
     }
 
-    /**
-     * Whether eating behavior is enabled.
-     * Some tasks may need to disable this during critical work.
-     */
     @Override
     public boolean enableEating(@NotNull EntityMaid maid) {
         return true;
