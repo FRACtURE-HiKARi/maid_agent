@@ -1,7 +1,13 @@
 package com.github.fracture_hikari.maid_agent.storage.memory;
 
+import com.github.fracture_hikari.maid_agent.ai.AIChatCallback;
 import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
+import com.github.tartaricacid.touhoulittlemaid.ai.manager.entity.ChatClientInfo;
+import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Represents a pending task for the maid to execute.
@@ -32,12 +38,13 @@ public class PendingTask {
     @Nullable
     private String resultMessage;
     private int actualCount; // Actual items fetched/stored/crafted
+    private AIChatCallback callback;
 
-    public PendingTask(TaskType type, String itemId, int count) {
-        this(type, itemId, count, null);
+    public PendingTask(EntityMaid maid, TaskType type, String itemId, int count) {
+        this(maid, type, itemId, count, null);
     }
 
-    public PendingTask(TaskType type, String itemId, int count, @Nullable StorageTarget target) {
+    public PendingTask(EntityMaid maid, TaskType type, String itemId, int count, @Nullable StorageTarget target) {
         this.type = type;
         this.itemId = itemId;
         this.count = count;
@@ -45,8 +52,12 @@ public class PendingTask {
         this.status = TaskStatus.PENDING;
         this.resultMessage = null;
         this.actualCount = 0;
+        this.callback = new AIChatCallback(maid); // TODO: replace this with proper client info.
     }
 
+    public void notifyComplete() {
+        this.callback.notifyTaskComplete(resultMessage);
+    }
     public TaskType getType() {
         return type;
     }

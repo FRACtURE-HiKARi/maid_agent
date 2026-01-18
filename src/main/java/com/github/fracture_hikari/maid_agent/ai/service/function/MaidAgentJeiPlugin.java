@@ -1,6 +1,7 @@
 package com.github.fracture_hikari.maid_agent.ai.service.function;
 
 import com.github.fracture_hikari.maid_agent.MaidAgent;
+import com.github.fracture_hikari.maid_agent.util.JeiRuntimeHolder;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.runtime.IJeiRuntime;

@@ -1,122 +1,125 @@
 package com.github.fracture_hikari.maid_agent.ai;
 
 import com.github.tartaricacid.touhoulittlemaid.ai.manager.entity.LLMCallback;
-import com.github.tartaricacid.touhoulittlemaid.ai.manager.entity.MaidAIChatData;
 import com.github.tartaricacid.touhoulittlemaid.ai.manager.entity.MaidAIChatManager;
-import com.github.tartaricacid.touhoulittlemaid.ai.service.llm.*;
-import com.github.tartaricacid.touhoulittlemaid.entity.chatbubble.ChatBubbleManager;
+import com.github.tartaricacid.touhoulittlemaid.ai.manager.setting.papi.PapiReplacer;
+import com.github.tartaricacid.touhoulittlemaid.ai.service.llm.LLMClient;
+import com.github.tartaricacid.touhoulittlemaid.ai.service.llm.LLMConfig;
+import com.github.tartaricacid.touhoulittlemaid.ai.service.llm.LLMMessage;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
-import com.google.common.collect.Lists;
+import com.github.tartaricacid.touhoulittlemaid.util.CappedQueue;
+import com.github.tartaricacid.touhoulittlemaid.ai.manager.entity.ChatClientInfo;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
-import net.minecraft.server.level.ServerLevel;
-import org.jetbrains.annotations.Nullable;
+import com.google.common.collect.Lists;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.logging.log4j.Logger;
 
-import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Utility to trigger autonomous AI chat for task completion notifications.
- * This allows behaviors to notify the LLM when async tasks complete.
+ * Utility to trigger LLM chat when an async task completes.
+ * 
+ * Mimics MaidAIChatManager.normalChat() flow exactly to avoid API errors.
  */
 public class AIChatCallback {
+    private static final Logger LOGGER = MaidAgent.LOGGER;
+    private EntityMaid maid;
+    private ChatClientInfo clientInfo;
+    private MaidAIChatManager chatManager;
+    private LLMClient client;
 
+    public AIChatCallback(EntityMaid maid) {
+        this(maid, getDefaultClientInfo());
+    }
+
+    public AIChatCallback(EntityMaid maid, ChatClientInfo clientInfo) {
+        this.maid = maid;
+        this.clientInfo = clientInfo;
+        this.chatManager = maid.getAiChatManager();
+        this.client = chatManager.getLLMSite().client();
+    }
+
+    private static ChatClientInfo getDefaultClientInfo() {
+        List<String> defaultDesc = new ArrayList<>();
+        defaultDesc.add("A fox girl who loves wine.");
+        return new ChatClientInfo("en_us", "Wine Fox", defaultDesc);
+    }
     /**
-     * Trigger an autonomous AI chat with a system message about task completion.
-     * This will start a new conversation with the LLM containing the result.
-     * 
-     * @param maid The maid entity
-     * @param systemMessage A message describing what happened (e.g., "I fetched 5 diamonds")
+     * Notify the LLM that a task has completed.
+     * Triggers LLM to generate a natural response about the completed task.
+     *
+     * @param result The task result message
      */
-    public static void notifyTaskComplete(EntityMaid maid, String systemMessage) {
-        if (!(maid.level() instanceof ServerLevel serverLevel)) {
-            return;
-        }
-
-        // Get the maid's AI chat manager via reflection (it's not publicly accessible)
-        MaidAIChatManager chatManager = getMaidAIChatManager(maid);
-        if (chatManager == null) {
-            MaidAgent.LOGGER.warn("Could not get MaidAIChatManager for task completion notification");
-            return;
-        }
-
-        @Nullable LLMSite site = chatManager.getLLMSite();
-        if (site == null || !site.enabled()) {
-            // No LLM configured, just show chat bubble
-            maid.getChatBubbleManager().addTextChatBubble(systemMessage);
-            return;
-        }
-
-        serverLevel.getServer().submit(() -> {
-            try {
-                triggerAutonomousChat(maid, chatManager, site, systemMessage);
-            } catch (Exception e) {
-                MaidAgent.LOGGER.error("Failed to trigger autonomous chat", e);
-                // Fallback to chat bubble
-                maid.getChatBubbleManager().addTextChatBubble(systemMessage);
-            }
-        });
-    }
-
-    private static void triggerAutonomousChat(EntityMaid maid, MaidAIChatManager chatManager, 
-                                               LLMSite site, String systemMessage) {
-        LLMClient chatClient = site.client();
-        
-        // Build message list with task result as a "user" message (simulating task report)
-        List<LLMMessage> messages = Lists.newArrayList();
-        
-        // Add system prompt (simplified - task result notification)
-        String systemPrompt = """
-            You are a maid assistant. A background task has just completed.
-            Report the result to your master naturally in a conversational way.
-            Keep your response brief and friendly.
-            """;
-        messages.add(LLMMessage.systemChat(maid, systemPrompt));
-        
-        // Add the task result as user input (this is what the maid should respond to)
-        messages.add(LLMMessage.userChat(maid, "[Task Completed] " + systemMessage));
-        
-        // Create chat config
-        LLMConfig config = LLMConfig.normalChat(chatManager.getLLMModel(), maid);
-        
-        // Add thinking bubble
-        ChatBubbleManager bubbleManager = maid.getChatBubbleManager();
-        long key = bubbleManager.addThinkingText("ai.touhou_little_maid.chat.chat_bubble_waiting");
-        
-        // Create callback - using autonomous message pattern
-        LLMCallback callback = new LLMCallback(chatManager, systemMessage, key);
-        
-        // Trigger the chat
-        chatClient.chat(messages, config, callback);
-    }
-
-    @Nullable
-    private static MaidAIChatManager getMaidAIChatManager(EntityMaid maid) {
+    public void notifyTaskComplete(String result) {
         try {
-            // MaidAIChatManager is stored in EntityMaid but may not have a public getter
-            // Try to find it via reflection
-            for (Field field : EntityMaid.class.getDeclaredFields()) {
-                if (MaidAIChatManager.class.isAssignableFrom(field.getType()) ||
-                    MaidAIChatData.class.isAssignableFrom(field.getType())) {
-                    field.setAccessible(true);
-                    Object value = field.get(maid);
-                    if (value instanceof MaidAIChatManager manager) {
-                        return manager;
-                    }
-                }
+            LOGGER.info("AIChatCallback: Triggering LLM with: {}", result);
+            triggerNormalChat(result);
+        } catch (Exception e) {
+            LOGGER.error("AIChatCallback: Failed to notify task complete", e);
+        }
+    }
+    
+    /**
+     * Mimics MaidAIChatManager.normalChat() exactly.
+     * Key points:
+     * 1. Build chatCompletion with system prompt + history (descending order)
+     * 2. Filter consecutive tool messages from start
+     * 3. Add user message AFTER building from history
+     * 4. Call client.chat()
+     */
+    private void triggerNormalChat(String result) {
+        try {
+            
+            // Build message list exactly like getChatCompletion() does
+            List<LLMMessage> chatCompletion = getChatCompletion();
+            
+            if (chatCompletion.isEmpty()) {
+                LOGGER.warn("AIChatCallback: No system setting found, cannot proceed");
+                return;
             }
+
+            chatCompletion.add(LLMMessage.assistantChat(maid, result));
+            LLMConfig config = LLMConfig.normalChat(chatManager.getLLMModel(), maid);
+            long key = maid.getChatBubbleManager().addThinkingText("ai.touhou_little_maid.chat.chat_bubble_waiting");
+
+            LLMCallback callback = new LLMCallback(chatManager, result, key);
+            client.chat(chatCompletion, config, callback);
             
-            // Try getAIChatManager if it exists
-            try {
-                var method = EntityMaid.class.getMethod("getAIChatManager");
-                return (MaidAIChatManager) method.invoke(maid);
-            } catch (NoSuchMethodException ignored) {}
-            
-            // Try creating a new one (may not have history though)
-            return new MaidAIChatManager(maid);
+            LOGGER.info("AIChatCallback: Triggered LLM with {} messages", chatCompletion.size());
             
         } catch (Exception e) {
-            MaidAgent.LOGGER.error("Failed to get MaidAIChatManager", e);
-            return null;
+            LOGGER.error("AIChatCallback: Failed to trigger LLM", e);
         }
+    }
+
+    /**
+     * copied from com.github.tartaricacid.touhoulittlemaid.ai.manager.entity.MaidAIChatManager private method
+     */
+    private List<LLMMessage> getChatCompletion() {
+        String language = clientInfo.language();
+        // 如果含有自定义设定，则直接使用自定义设定
+        if (StringUtils.isNotBlank(chatManager.customSetting)) {
+            EntityMaid maid = chatManager.getMaid();
+            String setting = PapiReplacer.replace(chatManager.customSetting, maid, language);
+            CappedQueue<LLMMessage> history = chatManager.getHistory();
+            List<LLMMessage> chatList = Lists.newArrayList();
+            chatList.add(LLMMessage.systemChat(maid, setting));
+            // 倒序遍历，将历史对话加载进去
+            history.getDeque().descendingIterator().forEachRemaining(chatList::add);
+            return chatList;
+        }
+
+        // 其他情况下，获取默认设定文件
+        return chatManager.getSetting().map(s -> {
+            EntityMaid maid = chatManager.getMaid();
+            String setting = s.getSetting(maid, language);
+            CappedQueue<LLMMessage> history = chatManager.getHistory();
+            List<LLMMessage> chatList = Lists.newArrayList();
+            chatList.add(LLMMessage.systemChat(maid, setting));
+            // 倒序遍历，将历史对话加载进去
+            history.getDeque().descendingIterator().forEachRemaining(chatList::add);
+            return chatList;
+        }).orElse(Lists.newArrayList());
     }
 }

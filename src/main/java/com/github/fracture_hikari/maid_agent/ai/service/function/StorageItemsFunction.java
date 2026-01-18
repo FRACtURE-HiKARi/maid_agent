@@ -156,7 +156,7 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
         }
 
         // Create task with target already set
-        PendingTask task = new PendingTask(taskType, params.itemId(), effectiveCount);
+        PendingTask task = new PendingTask(maid, taskType, params.itemId(), effectiveCount);
         task.setTarget(target);
         task.setStatus(PendingTask.TaskStatus.MOVING);
         maid.getBrain().setMemory(MemoryModuleRegistry.PENDING_TASK.get(), task);

@@ -85,6 +85,7 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
 
         // Create and queue new craft task (non-blocking!)
         PendingTask task = new PendingTask(
+                maid,
                 PendingTask.TaskType.CRAFT,
                 params.itemId(),
                 params.count()

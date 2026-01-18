@@ -128,11 +128,13 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
         maid.getBrain().eraseMemory(MemoryModuleType.LOOK_TARGET);
         
         // Clear task from memory
+        var taskOptional = maid.getBrain().getMemory(MemoryModuleRegistry.PENDING_TASK.get());
         maid.getBrain().eraseMemory(MemoryModuleRegistry.PENDING_TASK.get());
-        
+
         // Trigger AI chat callback with result
-        if (resultMessage != null) {
-            AIChatCallback.notifyTaskComplete(maid, resultMessage);
+        if (taskOptional.isPresent()) {
+            PendingTask task = taskOptional.get();
+            task.notifyComplete();
         }
     }
 

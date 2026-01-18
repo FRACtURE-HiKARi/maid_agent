@@ -1,5 +1,6 @@
 package com.github.fracture_hikari.maid_agent.ai.service.function;
 
+import com.github.fracture_hikari.maid_agent.util.JeiRuntimeHolder;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.IFunctionCall;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.response.ToolResponse;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.ObjectParameter;
