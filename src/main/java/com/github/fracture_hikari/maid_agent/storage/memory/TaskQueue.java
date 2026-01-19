@@ -63,6 +63,31 @@ public class TaskQueue {
     }
     
     /**
+     * Check if queue has a similar task (same type, item, and storage).
+     * Used for duplicate detection warning (but doesn't prevent adding).
+     */
+    public boolean hasSimilarTask(PendingTask.TaskType type, String itemId, int storageIndex) {
+        for (PendingTask task : tasks) {
+            if (task.getType() == type && 
+                task.getItemId().equals(itemId) &&
+                task.getTarget() != null &&
+                task.getTarget().getPos().equals(getStoragePosForIndex(storageIndex))) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // Helper to check storage position - compares by storage index via ViewedStorageMemory
+    private net.minecraft.core.BlockPos getStoragePosForIndex(int storageIndex) {
+        return maid.getBrain()
+                .getMemory(com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry.VIEWED_STORAGE.get())
+                .flatMap(mem -> mem.getStorageByIndex(storageIndex))
+                .map(target -> target.getPos())
+                .orElse(null);
+    }
+    
+    /**
      * Mark current task as complete and move to next.
      * @param success Whether the task succeeded
      * @param message Result message

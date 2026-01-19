@@ -52,6 +52,7 @@ public class MaidExtension implements ILittleMaid {
         register.register(new CraftItemFunction());
         register.register(new GetInventoryFunction());
         register.register(new GetNearbyStorageFunction());
+        register.register(new GetTaskQueueFunction());
     }
 
     @Override

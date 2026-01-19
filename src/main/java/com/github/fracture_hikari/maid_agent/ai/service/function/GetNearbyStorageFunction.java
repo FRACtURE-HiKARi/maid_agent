@@ -147,15 +147,9 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
                         itemCounts.merge(itemId, stack.getCount(), Integer::sum);
                     }
                 }
-                
-                int shown = 0;
+
                 for (Map.Entry<String, Integer> entry : itemCounts.entrySet()) {
-                    if (shown >= 5) {
-                        sb.append(String.format("    +%d more types\\n", itemCounts.size() - shown));
-                        break;
-                    }
                     sb.append(String.format("    %s x%d\\n", entry.getKey(), entry.getValue()));
-                    shown++;
                 }
             }
         }

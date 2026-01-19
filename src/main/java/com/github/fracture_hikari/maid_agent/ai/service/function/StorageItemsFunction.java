@@ -172,6 +172,12 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
             
             StorageTarget target = targetOpt.get();
             
+            // Check for similar task already in queue (warn but allow - could be multiple stacks)
+            if (taskQueue.hasSimilarTask(taskType, op.itemId(), op.storageIndex())) {
+                response.append(String.format("Note: Similar %s for %s already queued. ", 
+                        op.action(), op.itemId().replace("minecraft:", "")));
+            }
+            
             // Create task and add to queue
             PendingTask task = new PendingTask(maid, taskType, op.itemId(), effectiveCount);
             task.setTarget(target);

@@ -1,4 +1,4 @@
-package com.github.fracture_hikari.maid_agent.extensions;
+package com.github.fracture_hikari.maid_agent.compat.jei;
 
 import com.github.fracture_hikari.maid_agent.MaidAgent;
 import com.github.fracture_hikari.maid_agent.util.JeiRuntimeHolder;
