@@ -2,12 +2,8 @@ package com.github.fracture_hikari.maid_agent.storage.memory;
 
 import com.github.fracture_hikari.maid_agent.ai.AIChatCallback;
 import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
-import com.github.tartaricacid.touhoulittlemaid.ai.manager.entity.ChatClientInfo;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import org.jetbrains.annotations.Nullable;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Represents a pending task for the maid to execute.

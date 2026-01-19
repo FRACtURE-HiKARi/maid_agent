@@ -1,5 +1,6 @@
 package com.github.fracture_hikari.maid_agent.ai.service.function;
 
+import com.github.fracture_hikari.maid_agent.MaidAgent;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.IFunctionCall;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.response.ToolResponse;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.IntegerParameter;
@@ -136,12 +137,14 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
             if (info.contents.isEmpty()) {
                 sb.append("    Empty\\n");
             } else {
-                // Summarize contents (group by item)
+                // Summarize contents (group by item ID)
                 Map<String, Integer> itemCounts = new LinkedHashMap<>();
                 for (ItemStack stack : info.contents) {
                     if (!stack.isEmpty()) {
-                        String name = stack.getHoverName().getString();
-                        itemCounts.merge(name, stack.getCount(), Integer::sum);
+                        // Use item registry name (namespace:name) so LLM can use it in operations
+                        String itemId = net.minecraftforge.registries.ForgeRegistries.ITEMS
+                                .getKey(stack.getItem()).toString();
+                        itemCounts.merge(itemId, stack.getCount(), Integer::sum);
                     }
                 }
                 
@@ -156,7 +159,7 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
                 }
             }
         }
-        
+        MaidAgent.LOGGER.info(sb.toString().trim());
         return new ToolResponse(sb.toString().trim());
     }
 

@@ -19,7 +19,7 @@ import java.util.List;
 
 /**
  * Utility to trigger LLM chat when an async task completes.
- * 
+ *
  * Mimics MaidAIChatManager.normalChat() flow exactly to avoid API errors.
  */
 public class AIChatCallback {
@@ -59,7 +59,7 @@ public class AIChatCallback {
             LOGGER.error("AIChatCallback: Failed to notify task complete", e);
         }
     }
-    
+
     /**
      * Mimics MaidAIChatManager.normalChat() exactly.
      * Key points:
@@ -70,24 +70,24 @@ public class AIChatCallback {
      */
     private void triggerNormalChat(String result) {
         try {
-            
+
             // Build message list exactly like getChatCompletion() does
             List<LLMMessage> chatCompletion = getChatCompletion();
-            
+
             if (chatCompletion.isEmpty()) {
                 LOGGER.warn("AIChatCallback: No system setting found, cannot proceed");
                 return;
             }
 
-            chatCompletion.add(LLMMessage.assistantChat(maid, result));
+            chatCompletion.add(LLMMessage.systemChat(maid, result));
             LLMConfig config = LLMConfig.normalChat(chatManager.getLLMModel(), maid);
             long key = maid.getChatBubbleManager().addThinkingText("ai.touhou_little_maid.chat.chat_bubble_waiting");
 
             LLMCallback callback = new LLMCallback(chatManager, result, key);
             client.chat(chatCompletion, config, callback);
-            
+
             LOGGER.info("AIChatCallback: Triggered LLM with {} messages", chatCompletion.size());
-            
+
         } catch (Exception e) {
             LOGGER.error("AIChatCallback: Failed to trigger LLM", e);
         }

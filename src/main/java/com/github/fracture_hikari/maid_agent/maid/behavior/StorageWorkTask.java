@@ -2,15 +2,19 @@ package com.github.fracture_hikari.maid_agent.maid.behavior;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.init.InitEntities;
-import com.github.fracture_hikari.maid_agent.ai.AIChatCallback;
+import com.github.fracture_hikari.maid_agent.MaidAgent;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.fracture_hikari.maid_agent.storage.IStorageHandler;
 import com.github.fracture_hikari.maid_agent.storage.StorageManager;
 import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
 import com.github.fracture_hikari.maid_agent.storage.memory.PendingTask;
+import com.github.fracture_hikari.maid_agent.storage.memory.TaskQueue;
+import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.behavior.Behavior;
+import net.minecraft.world.entity.ai.behavior.BehaviorUtils;
+import net.minecraft.world.entity.ai.behavior.BlockPosTracker;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.item.Item;
@@ -48,21 +52,21 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
 
     @Override
     protected boolean checkExtraStartConditions(ServerLevel level, EntityMaid maid) {
-        // Check if we have a task in MOVING status with a target
-        Optional<PendingTask> taskOpt = maid.getBrain().getMemory(MemoryModuleRegistry.PENDING_TASK.get());
-        if (taskOpt.isEmpty()) {
+        // Check if we have a task queue with a current task ready to work
+        Optional<TaskQueue> queueOpt = maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get());
+        if (queueOpt.isEmpty() || queueOpt.get().isEmpty()) {
             return false;
         }
         
-        PendingTask task = taskOpt.get();
-        if (task.getStatus() != PendingTask.TaskStatus.MOVING) {
+        PendingTask task = queueOpt.get().peek();
+        if (task == null || task.getStatus() != PendingTask.TaskStatus.MOVING) {
             return false;
         }
         if (task.getTarget() == null) {
             return false;
         }
         
-        // Check if arrived at target (similar to hasReachedValidTargetOrReset)
+        // Check if arrived at target
         return hasReachedTarget(maid);
     }
     
@@ -97,7 +101,8 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
         resultMessage = null;
         
         // Set task to WORKING status
-        maid.getBrain().getMemory(MemoryModuleRegistry.PENDING_TASK.get())
+        maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get())
+                .map(TaskQueue::peek)
                 .ifPresent(task -> task.setStatus(PendingTask.TaskStatus.WORKING));
     }
 
@@ -106,7 +111,8 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
         if (workDone) return;
         
         // Perform the storage operation
-        maid.getBrain().getMemory(MemoryModuleRegistry.PENDING_TASK.get())
+        maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get())
+                .map(TaskQueue::peek)
                 .ifPresent(task -> {
                     if (task.getType() == PendingTask.TaskType.FETCH) {
                         resultMessage = performFetch(level, maid, task);
@@ -120,6 +126,8 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
                 });
     }
     
+    private static final float WALK_SPEED = 0.6f;
+    
     @Override
     protected void stop(ServerLevel level, EntityMaid maid, long gameTime) {
         // Clear movement memories
@@ -127,14 +135,36 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
         maid.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
         maid.getBrain().eraseMemory(MemoryModuleType.LOOK_TARGET);
         
-        // Clear task from memory
-        var taskOptional = maid.getBrain().getMemory(MemoryModuleRegistry.PENDING_TASK.get());
-        maid.getBrain().eraseMemory(MemoryModuleRegistry.PENDING_TASK.get());
-
-        // Trigger AI chat callback with result
-        if (taskOptional.isPresent()) {
-            PendingTask task = taskOptional.get();
-            task.notifyComplete();
+        // Get the queue
+        Optional<TaskQueue> queueOpt = maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get());
+        if (queueOpt.isEmpty()) return;
+        
+        TaskQueue queue = queueOpt.get();
+        PendingTask completedTask = queue.peek();
+        
+        // Mark current task complete in queue
+        if (completedTask != null) {
+            boolean success = completedTask.getStatus() == PendingTask.TaskStatus.COMPLETED;
+            queue.completeCurrentTask(success, completedTask.getResultMessage(), completedTask.getActualCount());
+            MaidAgent.LOGGER.info("Task completed: {} - {}", completedTask.getType(), resultMessage);
+        }
+        
+        // Check if batch is complete
+        if (queue.isBatchComplete()) {
+            // All tasks done - notify LLM with batch summary
+            queue.notifyBatchComplete();
+            maid.getBrain().eraseMemory(MemoryModuleRegistry.TASK_QUEUE.get());
+            MaidAgent.LOGGER.info("Batch complete, notified LLM");
+        } else if (!queue.isEmpty()) {
+            // More tasks to do - start walking to next target
+            PendingTask nextTask = queue.peek();
+            if (nextTask != null && nextTask.getTarget() != null) {
+                nextTask.setStatus(PendingTask.TaskStatus.MOVING);
+                BlockPos targetPos = nextTask.getTarget().getPos();
+                maid.getBrain().setMemory(InitEntities.TARGET_POS.get(), new BlockPosTracker(targetPos));
+                BehaviorUtils.setWalkAndLookTargetMemories(maid, targetPos, WALK_SPEED, 1);
+                MaidAgent.LOGGER.info("Starting next task: {} at {}", nextTask.getType(), targetPos);
+            }
         }
     }
 

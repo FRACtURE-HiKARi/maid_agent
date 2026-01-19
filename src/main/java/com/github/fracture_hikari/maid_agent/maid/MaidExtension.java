@@ -61,6 +61,7 @@ public class MaidExtension implements ILittleMaid {
             public List<MemoryModuleType<?>> getExtraMemoryTypes() {
                 return List.of(
                         MemoryModuleRegistry.PENDING_TASK.get(),
+                        MemoryModuleRegistry.TASK_QUEUE.get(),
                         MemoryModuleRegistry.VIEWED_STORAGE.get(),
                         MemoryModuleRegistry.TASK_RESULT.get()
                 );

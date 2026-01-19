@@ -8,6 +8,7 @@ import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.fracture_hikari.maid_agent.storage.StorageManager;
 import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
 import com.github.fracture_hikari.maid_agent.storage.memory.PendingTask;
+import com.github.fracture_hikari.maid_agent.storage.memory.TaskQueue;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
@@ -21,7 +22,7 @@ import java.util.Optional;
  * Now that StorageItemsFunction sets TARGET_POS directly, this behavior
  * is only used as fallback when target is not pre-set.
  * 
- * Activated when there's a PENDING_TASK with PENDING status AND no TARGET_POS set.
+ * Activated when there's a TASK_QUEUE with tasks in PENDING status AND no TARGET_POS set.
  */
 public class StorageMoveTask extends MaidMoveToBlockTask {
     private static final float WALK_SPEED = 0.6f;
@@ -44,13 +45,16 @@ public class StorageMoveTask extends MaidMoveToBlockTask {
             return false;
         }
         
-        // Check if we have a pending storage task that needs movement search
-        Optional<PendingTask> taskOpt = maid.getBrain().getMemory(MemoryModuleRegistry.PENDING_TASK.get());
-        if (taskOpt.isEmpty()) {
+        // Check if we have a task queue with a pending task that needs movement search
+        Optional<TaskQueue> queueOpt = maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get());
+        if (queueOpt.isEmpty() || queueOpt.get().isEmpty()) {
             return false;
         }
         
-        PendingTask task = taskOpt.get();
+        PendingTask task = queueOpt.get().peek();
+        if (task == null) {
+            return false;
+        }
         
         // Only handle FETCH or STORE tasks in PENDING status (not yet moving)
         // If status is MOVING, the target was already set by StorageItemsFunction
@@ -90,7 +94,8 @@ public class StorageMoveTask extends MaidMoveToBlockTask {
         
         // If we found a target through search, update task status
         if (maid.getBrain().hasMemoryValue(InitEntities.TARGET_POS.get()) && foundTarget != null) {
-            maid.getBrain().getMemory(MemoryModuleRegistry.PENDING_TASK.get())
+            maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get())
+                    .map(TaskQueue::peek)
                     .ifPresent(task -> {
                         task.setStatus(PendingTask.TaskStatus.MOVING);
                         task.setTarget(foundTarget);

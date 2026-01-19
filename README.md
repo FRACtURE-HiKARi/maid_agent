@@ -8,6 +8,7 @@ Introduce more LLM callable functions and behaviors.
 - storage operations
 
 ## TODO
+- bug fix: task queues halts
 - 拼音搜索
 - crafting functions
 - better prompts

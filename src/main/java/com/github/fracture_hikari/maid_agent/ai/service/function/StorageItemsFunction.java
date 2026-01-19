@@ -2,6 +2,7 @@ package com.github.fracture_hikari.maid_agent.ai.service.function;
 
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.IFunctionCall;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.response.ToolResponse;
+import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.ArrayParameter;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.IntegerParameter;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.ObjectParameter;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.Parameter;
@@ -14,47 +15,34 @@ import com.github.fracture_hikari.maid_agent.MaidAgent;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
 import com.github.fracture_hikari.maid_agent.storage.memory.PendingTask;
+import com.github.fracture_hikari.maid_agent.storage.memory.TaskQueue;
 import com.github.fracture_hikari.maid_agent.storage.memory.ViewedStorageMemory;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.ai.behavior.BehaviorUtils;
 import net.minecraft.world.entity.ai.behavior.BlockPosTracker;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
  * LLM function to manage storage operations (fetch or store items).
  * 
- * NON-BLOCKING: Queues task and returns immediately.
- * Uses storage_index from get_nearby_storage to specify target storage.
- * Sets TARGET_POS directly so maid walks to the specified storage.
+ * Supports both single operations and batch operations via 'operations' array.
+ * For multi-step tasks (e.g., move items), use the array to queue all steps.
+ * Maid will execute sequentially and report results when done.
  */
 public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.Params> {
     private static final String FUNCTION_ID = "storage_items";
     private static final String FUNCTION_DESC = """
-            Fetch or store items from/to a storage container.
-            First use get_nearby_storage to see available storages, then use storage_index to specify which one.
-            The maid will walk to the storage and perform the operation.""";
+            Fetch or store items from/to storage containers.
+            First use get_nearby_storage to see available storages.
+            
+            Supports single or batch operations:
+            - Single: provide one operation object in the 'operations' array
+            - Batch: provide multiple operations for sequential execution (e.g., fetch then store)
+            
+            The maid will execute all operations in order and notify you when complete.""";
     
-    private static final String ACTION_PARAM_ID = "action";
-    private static final String ACTION_PARAM_DESC = """
-            action (string, required): The operation to perform - 'fetch' or 'store'.
-            - fetch: Get items from storage into maid's inventory
-            - store: Put items from maid's inventory into storage""";
-    
-    private static final String STORAGE_INDEX_PARAM_ID = "storage_index";
-    private static final String STORAGE_INDEX_PARAM_DESC = """
-            storage_index (integer, required): Index of the storage from get_nearby_storage result.
-            Use [0] for the first storage, [1] for the second, etc.""";
-    
-    private static final String ITEM_PARAM_ID = "item_id";
-    private static final String ITEM_PARAM_DESC = """
-            item_id (string, required): The item in namespace:name format.
-            Example: minecraft:diamond, minecraft:oak_planks""";
-    
-    private static final String COUNT_PARAM_ID = "count";
-    private static final String COUNT_PARAM_DESC = """
-            count (integer, optional): Number of items. Default: 1 for fetch, all for store.""";
-
     private static final float WALK_SPEED = 0.6f;
 
     @Override
@@ -69,62 +57,72 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
 
     @Override
     public Parameter addParameters(ObjectParameter root, EntityMaid maid) {
+        // Define the operation object structure
+        ObjectParameter operationSchema = ObjectParameter.create();
+        
         StringParameter actionParam = StringParameter.create();
-        actionParam.setDescription(ACTION_PARAM_DESC);
+        actionParam.setDescription("'fetch' to get items from storage, 'store' to put items into storage");
         actionParam.addEnumValues("fetch", "store");
-        root.addProperties(ACTION_PARAM_ID, actionParam);
-
+        operationSchema.addProperties("action", actionParam);
+        
         IntegerParameter storageIndexParam = IntegerParameter.create();
-        storageIndexParam.setDescription(STORAGE_INDEX_PARAM_DESC);
+        storageIndexParam.setDescription("Index of storage from get_nearby_storage result (0, 1, 2...)");
         storageIndexParam.setMinimum(0);
         storageIndexParam.setMaximum(20);
-        root.addProperties(STORAGE_INDEX_PARAM_ID, storageIndexParam);
-
+        operationSchema.addProperties("storage_index", storageIndexParam);
+        
         StringParameter itemParam = StringParameter.create();
-        itemParam.setDescription(ITEM_PARAM_DESC);
+        itemParam.setDescription("Item ID in namespace:name format (e.g. minecraft:torch)");
         itemParam.setMinLength(1);
-        root.addProperties(ITEM_PARAM_ID, itemParam);
-
+        operationSchema.addProperties("item_id", itemParam);
+        
         IntegerParameter countParam = IntegerParameter.create();
-        countParam.setDescription(COUNT_PARAM_DESC);
+        countParam.setDescription("Number of items. Default: 1 for fetch, all for store.");
         countParam.setMinimum(0);
-        countParam.setMaximum(64 * 36);
-        root.addProperties(COUNT_PARAM_ID, countParam, false);
-
+        countParam.setMaximum(2304);
+        operationSchema.addProperties("count", countParam);
+        
+        // Operations array
+        ArrayParameter operationsArray = ArrayParameter.create();
+        operationsArray.setDescription("""
+                Array of operations to execute in sequence.
+                Each operation: {action, storage_index, item_id, count}
+                Single example: [{"action":"fetch","item_id":"minecraft:diamond","storage_index":0}]
+                Batch example: [{"action":"fetch","item_id":"minecraft:torch","storage_index":0,"count":64},
+                               {"action":"store","item_id":"minecraft:torch","storage_index":1,"count":64}]""");
+        operationsArray.setItems(operationSchema);
+        operationsArray.setMinItems(1);
+        operationsArray.setMaxItems(10);
+        root.addProperties("operations", operationsArray);
+        
         return root;
     }
 
     @Override
     public Codec<Params> codec() {
+        Codec<Operation> operationCodec = RecordCodecBuilder.create(instance ->
+                instance.group(
+                        Codec.STRING.fieldOf("action").forGetter(Operation::action),
+                        Codec.INT.fieldOf("storage_index").forGetter(Operation::storageIndex),
+                        Codec.STRING.fieldOf("item_id").forGetter(Operation::itemId),
+                        Codec.INT.optionalFieldOf("count", 0).forGetter(Operation::count)
+                ).apply(instance, Operation::new));
+        
         return RecordCodecBuilder.create(instance ->
                 instance.group(
-                        Codec.STRING.fieldOf(ACTION_PARAM_ID).forGetter(Params::action),
-                        Codec.INT.fieldOf(STORAGE_INDEX_PARAM_ID).forGetter(Params::storageIndex),
-                        Codec.STRING.fieldOf(ITEM_PARAM_ID).forGetter(Params::itemId),
-                        Codec.INT.optionalFieldOf(COUNT_PARAM_ID, 0).forGetter(Params::count)
+                        operationCodec.listOf().fieldOf("operations").forGetter(Params::operations)
                 ).apply(instance, Params::new));
     }
 
     @Override
     public ToolResponse onToolCall(Params params, EntityMaid maid) {
-        // Validate action
-        PendingTask.TaskType taskType;
-        int effectiveCount;
-        String actionVerb;
+        List<Operation> operations = params.operations();
         
-        if ("fetch".equalsIgnoreCase(params.action())) {
-            taskType = PendingTask.TaskType.FETCH;
-            effectiveCount = params.count() <= 0 ? 1 : params.count();
-            actionVerb = "fetch";
-        } else if ("store".equalsIgnoreCase(params.action())) {
-            taskType = PendingTask.TaskType.STORE;
-            effectiveCount = params.count() <= 0 ? Integer.MAX_VALUE : params.count();
-            actionVerb = "store";
-        } else {
-            return new ToolResponse("Invalid action: '" + params.action() + "'. Use 'fetch' or 'store'.");
+        if (operations == null || operations.isEmpty()) {
+            return new ToolResponse("No operations provided. Use 'operations' array with at least one operation.");
         }
-
-        // Look up storage by index from ViewedStorageMemory
+        
+        // Validate storage memory exists
         Optional<ViewedStorageMemory> memoryOpt = maid.getBrain()
                 .getMemory(MemoryModuleRegistry.VIEWED_STORAGE.get());
         
@@ -133,50 +131,74 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
         }
         
         ViewedStorageMemory memory = memoryOpt.get();
-        Optional<StorageTarget> targetOpt = memory.getStorageByIndex(params.storageIndex());
         
-        if (targetOpt.isEmpty()) {
-            int count = memory.getStorageCount();
-            return new ToolResponse(String.format(
-                    "Invalid storage_index %d. Only %d storage(s) available (0-%d). Use get_nearby_storage to refresh.",
-                    params.storageIndex(), count, count - 1));
+        // Get or create TaskQueue
+        TaskQueue taskQueue = maid.getBrain()
+                .getMemory(MemoryModuleRegistry.TASK_QUEUE.get())
+                .orElseGet(() -> {
+                    TaskQueue newQueue = new TaskQueue(maid);
+                    maid.getBrain().setMemory(MemoryModuleRegistry.TASK_QUEUE.get(), newQueue);
+                    return newQueue;
+                });
+        
+        boolean wasEmpty = taskQueue.isEmpty();
+        StringBuilder response = new StringBuilder();
+        int queued = 0;
+        
+        for (int i = 0; i < operations.size(); i++) {
+            Operation op = operations.get(i);
+            
+            // Validate action
+            PendingTask.TaskType taskType;
+            int effectiveCount;
+            
+            if ("fetch".equalsIgnoreCase(op.action())) {
+                taskType = PendingTask.TaskType.FETCH;
+                effectiveCount = op.count() <= 0 ? 1 : op.count();
+            } else if ("store".equalsIgnoreCase(op.action())) {
+                taskType = PendingTask.TaskType.STORE;
+                effectiveCount = op.count() <= 0 ? Integer.MAX_VALUE : op.count();
+            } else {
+                response.append(String.format("Skipped operation %d: invalid action '%s'. ", i + 1, op.action()));
+                continue;
+            }
+            
+            // Validate storage index
+            Optional<StorageTarget> targetOpt = memory.getStorageByIndex(op.storageIndex());
+            if (targetOpt.isEmpty()) {
+                response.append(String.format("Skipped operation %d: invalid storage_index %d. ", i + 1, op.storageIndex()));
+                continue;
+            }
+            
+            StorageTarget target = targetOpt.get();
+            
+            // Create task and add to queue
+            PendingTask task = new PendingTask(maid, taskType, op.itemId(), effectiveCount);
+            task.setTarget(target);
+            task.setStatus(PendingTask.TaskStatus.PENDING);
+            int position = taskQueue.enqueue(task);
+            queued++;
+            
+            // Start walking for first task
+            if (wasEmpty && queued == 1) {
+                task.setStatus(PendingTask.TaskStatus.MOVING);
+                BlockPos targetPos = target.getPos();
+                maid.getBrain().setMemory(InitEntities.TARGET_POS.get(), new BlockPosTracker(targetPos));
+                BehaviorUtils.setWalkAndLookTargetMemories(maid, targetPos, WALK_SPEED, 1);
+            }
+            
+            MaidAgent.LOGGER.info("Queued operation {}: {} {} from storage[{}]", 
+                    position, taskType, op.itemId(), op.storageIndex());
         }
         
-        StorageTarget target = targetOpt.get();
-        
-        // Check if there's already a pending task
-        boolean hasExistingTask = maid.getBrain()
-                .getMemory(MemoryModuleRegistry.PENDING_TASK.get())
-                .filter(task -> !task.isComplete())
-                .isPresent();
-        
-        if (hasExistingTask) {
-            MaidAgent.LOGGER.warn("erasing previous pending task memory");
-            maid.getBrain().eraseMemory(MemoryModuleRegistry.PENDING_TASK.get());
+        if (queued == 0) {
+            return new ToolResponse("No valid operations to queue. " + response);
         }
-
-        // Create task with target already set
-        PendingTask task = new PendingTask(maid, taskType, params.itemId(), effectiveCount);
-        task.setTarget(target);
-        task.setStatus(PendingTask.TaskStatus.MOVING);
-        maid.getBrain().setMemory(MemoryModuleRegistry.PENDING_TASK.get(), task);
         
-        // Set TARGET_POS and WALK_TARGET directly so maid starts walking
-        BlockPos targetPos = target.getPos();
-        maid.getBrain().setMemory(InitEntities.TARGET_POS.get(), new BlockPosTracker(targetPos));
-        BehaviorUtils.setWalkAndLookTargetMemories(maid, targetPos, WALK_SPEED, 1);
-        
-        MaidAgent.LOGGER.info("Storage task queued: {} {} {} at storage[{}] pos={}",
-                taskType, params.itemId(), effectiveCount, params.storageIndex(), targetPos);
-
-        // Return immediately
-        String countDesc = effectiveCount == Integer.MAX_VALUE ? "all" : String.valueOf(effectiveCount);
-        return new ToolResponse(String.format(
-                "Task queued: %s %s %s from storage[%d] at (%d,%d,%d).",
-                actionVerb, countDesc, params.itemId().replace("minecraft:", ""),
-                params.storageIndex(), targetPos.getX(), targetPos.getY(), targetPos.getZ()
-        ));
+        response.append(String.format("Queued %d operation(s). Will notify when complete.", queued));
+        return new ToolResponse(response.toString());
     }
 
-    public record Params(String action, int storageIndex, String itemId, int count) {}
+    public record Operation(String action, int storageIndex, String itemId, int count) {}
+    public record Params(List<Operation> operations) {}
 }

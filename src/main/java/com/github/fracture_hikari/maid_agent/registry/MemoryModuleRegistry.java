@@ -2,6 +2,7 @@ package com.github.fracture_hikari.maid_agent.registry;
 
 import com.github.fracture_hikari.maid_agent.MaidAgent;
 import com.github.fracture_hikari.maid_agent.storage.memory.PendingTask;
+import com.github.fracture_hikari.maid_agent.storage.memory.TaskQueue;
 import com.github.fracture_hikari.maid_agent.storage.memory.ViewedStorageMemory;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -20,9 +21,17 @@ public class MemoryModuleRegistry {
 
     /**
      * Current pending task the maid should execute (fetch/store/craft).
+     * Use TASK_QUEUE instead for multiple task support.
      */
     public static final RegistryObject<MemoryModuleType<PendingTask>> PENDING_TASK =
             MEMORY_MODULES.register("pending_task",
+                    () -> new MemoryModuleType<>(Optional.empty()));
+
+    /**
+     * Queue of pending tasks supporting multiple LLM function calls.
+     */
+    public static final RegistryObject<MemoryModuleType<TaskQueue>> TASK_QUEUE =
+            MEMORY_MODULES.register("task_queue",
                     () -> new MemoryModuleType<>(Optional.empty()));
 
     /**
