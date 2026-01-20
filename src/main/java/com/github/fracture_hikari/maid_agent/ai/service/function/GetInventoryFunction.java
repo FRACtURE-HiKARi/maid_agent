@@ -1,5 +1,6 @@
 package com.github.fracture_hikari.maid_agent.ai.service.function;
 
+import com.github.fracture_hikari.maid_agent.util.InventoryUtils;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.IFunctionCall;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.response.ToolResponse;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.ObjectParameter;
@@ -7,11 +8,7 @@ import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.param
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.items.IItemHandler;
 
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -48,30 +45,17 @@ public class GetInventoryFunction implements IFunctionCall<GetInventoryFunction.
 
     @Override
     public ToolResponse onToolCall(Params params, EntityMaid maid) {
-        IItemHandler maidInv = maid.getAvailableInv(false);
+        Map<String, InventoryUtils.ItemInfo> items = InventoryUtils.aggregateWithNames(
+                maid.getAvailableInv(false));
         
-        // Group items by type and count
-        Map<String, Integer> itemCounts = new HashMap<>();
-        Map<String, String> itemNames = new HashMap<>();
-        
-        for (int i = 0; i < maidInv.getSlots(); i++) {
-            ItemStack stack = maidInv.getStackInSlot(i);
-            if (!stack.isEmpty()) {
-                String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
-                itemCounts.merge(itemId, stack.getCount(), Integer::sum);
-                itemNames.putIfAbsent(itemId, stack.getHoverName().getString());
-            }
-        }
-        
-        if (itemCounts.isEmpty()) {
+        if (items.isEmpty()) {
             return new ToolResponse("Maid's inventory is empty.");
         }
         
         StringBuilder sb = new StringBuilder("Maid's inventory:\n");
-        itemCounts.forEach((itemId, count) -> {
-            String name = itemNames.get(itemId);
-            sb.append(String.format("- %s (%s) x%d\n", name, itemId, count));
-        });
+        items.values().forEach(info -> 
+            sb.append(String.format("- %s (%s) x%d\n", info.displayName(), info.itemId(), info.count()))
+        );
         
         return new ToolResponse(sb.toString().trim());
     }

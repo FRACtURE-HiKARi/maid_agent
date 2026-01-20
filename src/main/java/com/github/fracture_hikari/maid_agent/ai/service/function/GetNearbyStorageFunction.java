@@ -13,6 +13,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
 import com.github.fracture_hikari.maid_agent.storage.memory.ViewedStorageMemory;
+import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -160,8 +161,7 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
                 Map<String, Integer> itemCounts = new LinkedHashMap<>();
                 for (ItemStack stack : info.contents) {
                     if (!stack.isEmpty()) {
-                        String itemId = net.minecraftforge.registries.ForgeRegistries.ITEMS
-                                .getKey(stack.getItem()).toString();
+                        String itemId = ItemIdUtils.getId(stack);
                         itemCounts.merge(itemId, stack.getCount(), Integer::sum);
                     }
                 }

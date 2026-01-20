@@ -8,7 +8,6 @@ import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.param
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.Parameter;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.StringParameter;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
-import com.github.tartaricacid.touhoulittlemaid.init.InitEntities;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
@@ -17,9 +16,7 @@ import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
 import com.github.fracture_hikari.maid_agent.storage.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.storage.memory.TaskQueue;
 import com.github.fracture_hikari.maid_agent.storage.memory.ViewedStorageMemory;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.entity.ai.behavior.BehaviorUtils;
-import net.minecraft.world.entity.ai.behavior.BlockPosTracker;
+import com.github.fracture_hikari.maid_agent.util.TaskQueueHelper;
 
 import java.util.List;
 import java.util.Optional;
@@ -42,8 +39,6 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
             - Batch: provide multiple operations for sequential execution (e.g., fetch then store)
             
             The maid will execute all operations in order and notify you when complete.""";
-    
-    private static final float WALK_SPEED = 0.6f;
 
     @Override
     public String getId() {
@@ -139,13 +134,7 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
         ViewedStorageMemory memory = memoryOpt.get();
         
         // Get or create TaskQueue
-        TaskQueue taskQueue = maid.getBrain()
-                .getMemory(MemoryModuleRegistry.TASK_QUEUE.get())
-                .orElseGet(() -> {
-                    TaskQueue newQueue = new TaskQueue(maid);
-                    maid.getBrain().setMemory(MemoryModuleRegistry.TASK_QUEUE.get(), newQueue);
-                    return newQueue;
-                });
+        TaskQueue taskQueue = TaskQueueHelper.getOrCreateQueue(maid);
         
         boolean wasEmpty = taskQueue.isEmpty();
         StringBuilder response = new StringBuilder();
@@ -194,9 +183,7 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
             // Start walking for first task
             if (wasEmpty && queued == 1) {
                 task.setStatus(PendingTask.TaskStatus.MOVING);
-                BlockPos targetPos = target.getPos();
-                maid.getBrain().setMemory(InitEntities.TARGET_POS.get(), new BlockPosTracker(targetPos));
-                BehaviorUtils.setWalkAndLookTargetMemories(maid, targetPos, WALK_SPEED, 1);
+                TaskQueueHelper.setMovementTarget(maid, target.getPos());
             }
             
             MaidAgent.LOGGER.info("Queued operation {}: {} {} from storage[{}]", 

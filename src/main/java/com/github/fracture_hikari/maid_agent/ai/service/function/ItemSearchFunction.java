@@ -1,5 +1,6 @@
 package com.github.fracture_hikari.maid_agent.ai.service.function;
 
+import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import com.github.fracture_hikari.maid_agent.util.JeiRuntimeHolder;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.IFunctionCall;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.response.ToolResponse;
@@ -13,7 +14,6 @@ import com.github.fracture_hikari.maid_agent.config.JeiConfig;
 import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.runtime.IIngredientFilter;
 import mezz.jei.api.runtime.IJeiRuntime;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
@@ -112,8 +112,7 @@ public class ItemSearchFunction implements IFunctionCall<ItemSearchFunction.Resu
     }
 
     private String formatItemInfo(ItemStack stack) {
-        var registryName = BuiltInRegistries.ITEM.getKey(stack.getItem());
-        String itemId = registryName.toString();
+        String itemId = ItemIdUtils.getId(stack);
         String displayName = stack.getHoverName().getString();
         return String.format("- %s (%s)", displayName, itemId);
     }

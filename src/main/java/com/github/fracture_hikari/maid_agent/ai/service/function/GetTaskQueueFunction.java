@@ -6,9 +6,9 @@ import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.param
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.Parameter;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.mojang.serialization.Codec;
-import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.fracture_hikari.maid_agent.storage.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.storage.memory.TaskQueue;
+import com.github.fracture_hikari.maid_agent.util.TaskQueueHelper;
 
 import java.util.Optional;
 
@@ -47,8 +47,7 @@ public class GetTaskQueueFunction implements IFunctionCall<GetTaskQueueFunction.
 
     @Override
     public ToolResponse onToolCall(Params params, EntityMaid maid) {
-        Optional<TaskQueue> queueOpt = maid.getBrain()
-                .getMemory(MemoryModuleRegistry.TASK_QUEUE.get());
+        Optional<TaskQueue> queueOpt = TaskQueueHelper.getQueue(maid);
         
         if (queueOpt.isEmpty() || queueOpt.get().isEmpty()) {
             // Check if there are completed results to report

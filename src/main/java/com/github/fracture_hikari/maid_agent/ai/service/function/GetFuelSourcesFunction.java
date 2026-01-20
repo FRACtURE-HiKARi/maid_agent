@@ -1,9 +1,9 @@
 package com.github.fracture_hikari.maid_agent.ai.service.function;
 
-import com.github.fracture_hikari.maid_agent.compat.Integrations;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
 import com.github.fracture_hikari.maid_agent.storage.memory.ViewedStorageMemory;
+import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.IFunctionCall;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.response.ToolResponse;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.ObjectParameter;
@@ -11,8 +11,6 @@ import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.param
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraftforge.common.ForgeHooks;
 
@@ -83,8 +81,8 @@ public class GetFuelSourcesFunction implements IFunctionCall<GetFuelSourcesFunct
                     int itemsPerFuel = burnTime / 200;
                     if (itemsPerFuel < 1) itemsPerFuel = 1;
                     
-                    ResourceLocation itemId = ic.item().getItem().builtInRegistryHolder().key().location();
-                    fuels.add(new FuelItem(itemId.toString(), ic.count(), itemsPerFuel));
+                    String itemId = ItemIdUtils.getId(ic.item());
+                    fuels.add(new FuelItem(itemId, ic.count(), itemsPerFuel));
                 }
             }
             

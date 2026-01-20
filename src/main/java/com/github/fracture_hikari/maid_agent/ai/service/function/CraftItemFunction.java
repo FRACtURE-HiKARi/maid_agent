@@ -3,11 +3,12 @@ package com.github.fracture_hikari.maid_agent.ai.service.function;
 import com.github.fracture_hikari.maid_agent.compat.Integrations;
 import com.github.fracture_hikari.maid_agent.config.CraftConfig;
 import com.github.fracture_hikari.maid_agent.recipe.CraftingTreeEvaluator;
-import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
 import com.github.fracture_hikari.maid_agent.storage.memory.PendingTask;
-import com.github.fracture_hikari.maid_agent.storage.memory.TaskQueue;
-import com.github.fracture_hikari.maid_agent.storage.memory.ViewedStorageMemory;
+import com.github.fracture_hikari.maid_agent.util.InventoryUtils;
+import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
+import com.github.fracture_hikari.maid_agent.util.RecipeLookup;
+import com.github.fracture_hikari.maid_agent.util.TaskQueueHelper;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.IFunctionCall;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.response.ToolResponse;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.BoolParameter;
@@ -16,7 +17,6 @@ import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.param
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.Parameter;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.StringParameter;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
-import com.github.tartaricacid.touhoulittlemaid.init.InitEntities;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
@@ -26,10 +26,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SmeltingRecipe;
-import net.minecraftforge.items.IItemHandler;
-import studio.fantasyit.maid_storage_manager.util.RecipeUtil;
 
 import java.util.*;
 
@@ -130,23 +127,22 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
         }
         
         // Parse item ID
-        ResourceLocation itemId = ResourceLocation.tryParse(params.itemId());
-        if (itemId == null || !BuiltInRegistries.ITEM.containsKey(itemId)) {
+        if (!ItemIdUtils.isValid(params.itemId())) {
             return new ToolResponse("Unknown item: " + params.itemId() + ". Use jei_item_search to find valid item IDs.");
         }
         
-        ItemStack targetItem = new ItemStack(BuiltInRegistries.ITEM.get(itemId));
+        ItemStack targetItem = ItemIdUtils.createStack(params.itemId());
         int count = Math.min(params.count(), CraftConfig.MAX_CRAFT_OUTPUT.get());
         
         // Get maid's inventory and storage
-        Map<String, Integer> maidInventory = getMaidInventory(maid);
-        Map<String, Integer> storageInventory = getStorageInventory(maid);
+        Map<String, Integer> maidInventory = InventoryUtils.getMaidInventory(maid);
+        Map<String, Integer> storageInventory = InventoryUtils.getStorageInventory(maid);
         
         StringBuilder sb = new StringBuilder();
         
         // If recipe_id is specified, use that specific recipe
         if (!params.recipeId().isEmpty()) {
-            Optional<CraftingRecipe> specificRecipe = findRecipeById(level, params.recipeId());
+            Optional<CraftingRecipe> specificRecipe = RecipeLookup.findById(level, params.recipeId());
             if (specificRecipe.isEmpty()) {
                 return new ToolResponse("Recipe not found: " + params.recipeId());
             }
@@ -173,14 +169,15 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
         
         // No recipe_id specified - list available recipes
         // If recursive_search, use smart tree evaluation
+        ToolResponse faultResponse = new ToolResponse(String.format(
+                "No recipe found for %s. Use jei_item_search to find valid item IDs.",
+                params.itemId()));
         if (params.recursiveSearch()) {
             CraftingTreeEvaluator evaluator = new CraftingTreeEvaluator(level, maidInventory, storageInventory);
             List<CraftingTreeEvaluator.EvaluatedTree> trees = evaluator.evaluateRecipes(targetItem, count);
             
             if (trees.isEmpty()) {
-                return new ToolResponse(String.format(
-                        "No recipe found for %s. Use jei_item_search to find valid item IDs.",
-                        params.itemId()));
+                return faultResponse;
             }
             
             // Check for valid (complete) trees
@@ -227,13 +224,12 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
         }
         
         // Simple listing without tree evaluation
-        List<CraftingRecipe> craftingRecipes = findCraftingRecipes(level, targetItem);
-        Optional<SmeltingRecipe> smeltingRecipe = RecipeUtil.getSmeltingRecipe(level, targetItem);
+        int maxRecipes = com.github.fracture_hikari.maid_agent.config.JeiConfig.RECIPE_SEARCH_MAX_RESULTS.get();
+        List<CraftingRecipe> craftingRecipes = RecipeLookup.findByOutput(level, targetItem, maxRecipes);
+        Optional<SmeltingRecipe> smeltingRecipe = RecipeLookup.findSmeltingByOutput(level, targetItem);
         
         if (craftingRecipes.isEmpty() && smeltingRecipe.isEmpty()) {
-            return new ToolResponse(String.format(
-                    "No recipe found for %s. Use jei_item_search to find valid item IDs.",
-                    params.itemId()));
+            return faultResponse;
         }
         
         sb.append(String.format("Found %d recipe(s) for %s:\n\n", 
@@ -303,128 +299,31 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
                                       String recipeId, java.util.LinkedHashMap<String, Integer> craftingSteps,
                                       PendingTask.WorkstationType workstationType,
                                       ServerLevel level) {
-        // Find nearby crafting table
-        BlockPos maidPos = maid.blockPosition();
-        int searchRadius = maid.hasRestriction() ? (int) maid.getRestrictRadius() : 16;
+        // Find nearby workstation using utility
+        int searchRadius = TaskQueueHelper.getSearchRadius(maid, 16);
+        Optional<BlockPos> workstationOpt = TaskQueueHelper.findNearestWorkstation(
+                level, maid.blockPosition(), searchRadius, workstationType);
         
-        BlockPos workstationPos = null;
-        double minDist = Double.MAX_VALUE;
-        
-        for (BlockPos pos : BlockPos.betweenClosed(
-                maidPos.offset(-searchRadius, -4, -searchRadius),
-                maidPos.offset(searchRadius, 4, searchRadius))) {
-            if (isWorkstation(level, pos, workstationType)) {
-                double dist = maidPos.distSqr(pos);
-                if (dist < minDist) {
-                    minDist = dist;
-                    workstationPos = pos.immutable();
-                }
-            }
-        }
-        
-        if (workstationPos == null) {
+        if (workstationOpt.isEmpty()) {
             return "Error: No crafting table found nearby. Cannot queue crafting task.";
         }
         
-        // Create task and queue it
+        BlockPos workstationPos = workstationOpt.get();
+        
+        // Create task
         PendingTask task = new PendingTask(maid, PendingTask.TaskType.CRAFT, itemId, count);
         task.setWorkstationType(workstationType);
         task.setRecipeId(recipeId);
-        task.setCraftingSteps(craftingSteps);  // Store the pre-computed steps
+        task.setCraftingSteps(craftingSteps);
         ResourceLocation blockType = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(
                 level.getBlockState(workstationPos).getBlock());
         task.setTarget(new StorageTarget(blockType, workstationPos, (net.minecraft.core.Direction) null));
         
-        // Get or create task queue
-        TaskQueue queue = maid.getBrain()
-                .getMemory(MemoryModuleRegistry.TASK_QUEUE.get())
-                .orElseGet(() -> {
-                    TaskQueue newQueue = new TaskQueue(maid);
-                    maid.getBrain().setMemory(MemoryModuleRegistry.TASK_QUEUE.get(), newQueue);
-                    return newQueue;
-                });
-        
-        queue.enqueue(task);
-        
-        // Start the first task if this is the only one
-        if (queue.size() == 1) {
-            task.setStatus(PendingTask.TaskStatus.MOVING);
-            maid.getBrain().setMemory(InitEntities.TARGET_POS.get(), 
-                    new net.minecraft.world.entity.ai.behavior.BlockPosTracker(workstationPos));
-            net.minecraft.world.entity.ai.behavior.BehaviorUtils.setWalkAndLookTargetMemories(
-                    maid, workstationPos, 0.6f, 1);
-        }
+        // Queue task
+        TaskQueueHelper.queueTask(maid, task, workstationPos);
         
         return String.format("Queued crafting task: %dx %s at crafting table (%d,%d,%d)",
                 count, itemId, workstationPos.getX(), workstationPos.getY(), workstationPos.getZ());
-    }
-    
-    private boolean isWorkstation(ServerLevel level, BlockPos pos, PendingTask.WorkstationType type) {
-        net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
-        return switch (type) {
-            case CRAFTING_TABLE -> state.is(net.minecraft.world.level.block.Blocks.CRAFTING_TABLE);
-            case FURNACE -> state.is(net.minecraft.world.level.block.Blocks.FURNACE);
-            case SMOKER -> state.is(net.minecraft.world.level.block.Blocks.SMOKER);
-            case BLAST_FURNACE -> state.is(net.minecraft.world.level.block.Blocks.BLAST_FURNACE);
-        };
-    }
-    
-    private List<CraftingRecipe> findCraftingRecipes(ServerLevel level, ItemStack target) {
-        int maxRecipes = com.github.fracture_hikari.maid_agent.config.JeiConfig.RECIPE_SEARCH_MAX_RESULTS.get();
-        return level.getRecipeManager()
-                .getAllRecipesFor(RecipeType.CRAFTING)
-                .stream()
-                .filter(r -> ItemStack.isSameItem(r.getResultItem(level.registryAccess()), target))
-                .limit(maxRecipes)
-                .toList();
-    }
-    
-    private Optional<CraftingRecipe> findRecipeById(ServerLevel level, String recipeId) {
-        ResourceLocation id = ResourceLocation.tryParse(recipeId);
-        if (id == null) return Optional.empty();
-        return level.getRecipeManager()
-                .getAllRecipesFor(RecipeType.CRAFTING)
-                .stream()
-                .filter(r -> r.getId().equals(id))
-                .findFirst();
-    }
-    
-    private Map<String, Integer> getMaidInventory(EntityMaid maid) {
-        Map<String, Integer> inventory = new HashMap<>();
-        IItemHandler handler = maid.getAvailableInv(true);
-        for (int i = 0; i < handler.getSlots(); i++) {
-            ItemStack stack = handler.getStackInSlot(i);
-            if (!stack.isEmpty()) {
-                String id = stack.getItem().builtInRegistryHolder().key().location().toString();
-                inventory.merge(id, stack.getCount(), Integer::sum);
-            }
-        }
-        return inventory;
-    }
-    
-    private Map<String, Integer> getStorageInventory(EntityMaid maid) {
-        Map<String, Integer> inventory = new HashMap<>();
-        Optional<ViewedStorageMemory> memoryOpt = maid.getBrain()
-                .getMemory(MemoryModuleRegistry.VIEWED_STORAGE.get());
-        if (memoryOpt.isPresent()) {
-            ViewedStorageMemory memory = memoryOpt.get();
-            for (int i = 0; i < memory.getStorageCount(); i++) {
-                memory.getStorageByIndex(i).ifPresent(target -> {
-                    for (ViewedStorageMemory.ItemCount ic : memory.getContents(target)) {
-                        String id = ic.item().getItem().builtInRegistryHolder().key().location().toString();
-                        inventory.merge(id, ic.count(), Integer::sum);
-                    }
-                });
-            }
-        }
-        return inventory;
-    }
-    
-    private int getStorageStaleness(EntityMaid maid, ServerLevel level) {
-        return maid.getBrain()
-                .getMemory(MemoryModuleRegistry.VIEWED_STORAGE.get())
-                .map(m -> m.getStalenessSeconds(level.getGameTime()))
-                .orElse(999);
     }
     
     private List<IngredientNeed> analyzeIngredients(List<Ingredient> ingredients, int multiplier) {
@@ -433,7 +332,7 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
             if (ingredient.isEmpty()) continue;
             ItemStack[] items = ingredient.getItems();
             if (items.length > 0) {
-                String id = items[0].getItem().builtInRegistryHolder().key().location().toString();
+                String id = ItemIdUtils.getId(items[0]);
                 needs.merge(id, multiplier, Integer::sum);
             }
         }
@@ -467,11 +366,11 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
             
             // Recursive search for missing items
             if (recursive && missing > 0 && depth < maxDepth) {
-                ResourceLocation rl = ResourceLocation.tryParse(need.itemId);
+                ResourceLocation rl = ItemIdUtils.parse(need.itemId);
                 if (rl != null && BuiltInRegistries.ITEM.containsKey(rl)) {
-                    ItemStack item = new ItemStack(BuiltInRegistries.ITEM.get(rl));
-                    Optional<CraftingRecipe> subRecipe = findCraftingRecipes(level, item).stream().findFirst();
-                    Optional<SmeltingRecipe> subSmelt = RecipeUtil.getSmeltingRecipe(level, item);
+                    ItemStack item = ItemIdUtils.createStack(need.itemId);
+                    Optional<CraftingRecipe> subRecipe = RecipeLookup.findByOutput(level, item).stream().findFirst();
+                    Optional<SmeltingRecipe> subSmelt = RecipeLookup.findSmeltingByOutput(level, item);
                     
                     if (subRecipe.isPresent()) {
                         sb.append(String.format("%s  → Can craft from:\\n", indent));
@@ -512,11 +411,11 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
             
             // Recursive search for missing items
             if (recursive && missing > 0 && depth < maxDepth) {
-                ResourceLocation rl = ResourceLocation.tryParse(need.itemId);
+                ResourceLocation rl = ItemIdUtils.parse(need.itemId);
                 if (rl != null && BuiltInRegistries.ITEM.containsKey(rl)) {
-                    ItemStack item = new ItemStack(BuiltInRegistries.ITEM.get(rl));
-                    Optional<CraftingRecipe> subRecipe = findCraftingRecipes(level, item).stream().findFirst();
-                    Optional<SmeltingRecipe> subSmelt = RecipeUtil.getSmeltingRecipe(level, item);
+                    ItemStack item = ItemIdUtils.createStack(need.itemId);
+                    Optional<CraftingRecipe> subRecipe = RecipeLookup.findByOutput(level, item).stream().findFirst();
+                    Optional<SmeltingRecipe> subSmelt = RecipeLookup.findSmeltingByOutput(level, item);
                     
                     if (subRecipe.isPresent()) {
                         String subType = subRecipe.get().getClass().getSimpleName().contains("Shapeless") 
