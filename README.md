@@ -5,12 +5,15 @@ Introduce more LLM callable functions and behaviors.
 
 ## New Functions
 - JEI item / recipe search
-- storage operations
+- storage / crafting, based on storage manager.
 
 ## TODO
-- bug fix: task queues halts
 - 拼音搜索
-- crafting functions
+- support crafting guides from storage manager.
 - better prompts
-- a dedicated task and config
+- dedicated task config
 - client locale
+
+## Future Plans
+- maidsoul kitchen capability
+- 

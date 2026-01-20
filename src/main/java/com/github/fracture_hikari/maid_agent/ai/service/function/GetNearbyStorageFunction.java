@@ -1,6 +1,7 @@
 package com.github.fracture_hikari.maid_agent.ai.service.function;
 
 import com.github.fracture_hikari.maid_agent.MaidAgent;
+import com.github.fracture_hikari.maid_agent.compat.Integrations;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.IFunctionCall;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.response.ToolResponse;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.IntegerParameter;
@@ -10,18 +11,24 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
-import com.github.fracture_hikari.maid_agent.storage.IStorageHandler;
-import com.github.fracture_hikari.maid_agent.storage.StorageManager;
 import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
 import com.github.fracture_hikari.maid_agent.storage.memory.ViewedStorageMemory;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraftforge.common.capabilities.ForgeCapabilities;
+import net.minecraftforge.items.IItemHandler;
 
 import java.util.*;
 
+// MSM imports
+import studio.fantasyit.maid_storage_manager.storage.MaidStorage;
+import studio.fantasyit.maid_storage_manager.storage.Target;
+
 /**
  * LLM function to discover and list nearby storage blocks.
+ * Uses maid_storage_manager's MaidStorage for storage detection.
  * Stores discovered storages in ViewedStorageMemory so they can be referenced by index.
  */
 public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageFunction.Params> {
@@ -67,6 +74,11 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
 
     @Override
     public ToolResponse onToolCall(Params params, EntityMaid maid) {
+        // Storage operations require maid_storage_manager
+        if (!Integrations.maidStorageManager()) {
+            return new ToolResponse(Integrations.getMsmRequiredMessage());
+        }
+        
         if (!(maid.level() instanceof ServerLevel level)) {
             return new ToolResponse("Cannot scan storage - not on server");
         }
@@ -75,27 +87,33 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
         int radius = Math.min(params.radius(), 32);
         
         List<StorageInfo> storages = new ArrayList<>();
+        Set<BlockPos> checkedPositions = new HashSet<>();
         
-        // Scan for storage blocks
+        // Scan for storage blocks using MSM's MaidStorage
         for (int x = -radius; x <= radius && storages.size() < MAX_STORAGES; x++) {
             for (int y = -radius / 2; y <= radius / 2 && storages.size() < MAX_STORAGES; y++) {
                 for (int z = -radius; z <= radius && storages.size() < MAX_STORAGES; z++) {
                     BlockPos checkPos = maidPos.offset(x, y, z);
                     
-                    Optional<StorageTarget> targetOpt = StorageManager.getInstance()
-                            .isValidTarget(level, checkPos, null);
+                    // Skip already checked positions
+                    if (checkedPositions.contains(checkPos)) continue;
+                    checkedPositions.add(checkPos);
                     
-                    if (targetOpt.isPresent()) {
-                        StorageTarget target = targetOpt.get();
-                        IStorageHandler handler = StorageManager.getInstance()
-                                .getHandler(target.getType())
-                                .orElse(null);
+                    // Use MSM's storage detection
+                    Target msmTarget = MaidStorage.getInstance().isValidTarget(level, maid, checkPos, null);
+                    
+                    if (msmTarget != null) {
+                        // Get contents via IItemHandler
+                        List<ItemStack> contents = getContentsFromTarget(level, msmTarget);
                         
-                        if (handler != null) {
-                            List<ItemStack> contents = handler.getContents(level, checkPos, null);
-                            storages.add(new StorageInfo(target, contents, 
-                                    (int) Math.sqrt(checkPos.distSqr(maidPos))));
-                        }
+                        // Convert to our StorageTarget for memory storage
+                        StorageTarget ourTarget = new StorageTarget(
+                                msmTarget.getType(), 
+                                msmTarget.getPos(), 
+                                msmTarget.getSide());
+                        
+                        storages.add(new StorageInfo(ourTarget, contents, 
+                                (int) Math.sqrt(checkPos.distSqr(maidPos))));
                     }
                 }
             }
@@ -119,6 +137,7 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
         
         // Clear old entries and add new ones
         viewedStorage.clearStorages();
+        viewedStorage.setLastUpdated(level.getGameTime());
         for (StorageInfo info : storages) {
             viewedStorage.addStorage(info.target, info.contents);
         }
@@ -141,20 +160,43 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
                 Map<String, Integer> itemCounts = new LinkedHashMap<>();
                 for (ItemStack stack : info.contents) {
                     if (!stack.isEmpty()) {
-                        // Use item registry name (namespace:name) so LLM can use it in operations
                         String itemId = net.minecraftforge.registries.ForgeRegistries.ITEMS
                                 .getKey(stack.getItem()).toString();
                         itemCounts.merge(itemId, stack.getCount(), Integer::sum);
                     }
                 }
-
+                
+                int shown = 0;
                 for (Map.Entry<String, Integer> entry : itemCounts.entrySet()) {
+                    if (shown >= 5) {
+                        sb.append(String.format("    +%d more types\\n", itemCounts.size() - shown));
+                        break;
+                    }
                     sb.append(String.format("    %s x%d\\n", entry.getKey(), entry.getValue()));
+                    shown++;
                 }
             }
         }
         MaidAgent.LOGGER.info(sb.toString().trim());
         return new ToolResponse(sb.toString().trim());
+    }
+    
+    private List<ItemStack> getContentsFromTarget(ServerLevel level, Target target) {
+        List<ItemStack> contents = new ArrayList<>();
+        BlockEntity be = level.getBlockEntity(target.getPos());
+        if (be != null) {
+            IItemHandler handler = be.getCapability(ForgeCapabilities.ITEM_HANDLER, 
+                    target.getSide().orElse(null)).orElse(null);
+            if (handler != null) {
+                for (int i = 0; i < handler.getSlots(); i++) {
+                    ItemStack stack = handler.getStackInSlot(i);
+                    if (!stack.isEmpty()) {
+                        contents.add(stack.copy());
+                    }
+                }
+            }
+        }
+        return contents;
     }
 
     private record StorageInfo(StorageTarget target, List<ItemStack> contents, int distance) {}

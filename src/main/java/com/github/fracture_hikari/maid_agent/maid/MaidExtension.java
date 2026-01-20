@@ -7,17 +7,12 @@ import com.github.tartaricacid.touhoulittlemaid.api.ILittleMaid;
 import com.github.tartaricacid.touhoulittlemaid.api.LittleMaidExtension;
 import com.github.tartaricacid.touhoulittlemaid.api.entity.ai.IExtraMaidBrain;
 import com.github.tartaricacid.touhoulittlemaid.entity.ai.brain.ExtraMaidBrainManager;
-import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.entity.task.TaskManager;
-import com.mojang.datafixers.util.Pair;
 import com.github.fracture_hikari.maid_agent.ai.service.function.*;
 import com.github.fracture_hikari.maid_agent.ai.service.llm.claude.LLMClaudeSite;
 import com.github.fracture_hikari.maid_agent.ai.service.llm.gemini.LLMGeminiSite;
-import com.github.fracture_hikari.maid_agent.maid.behavior.StorageMoveTask;
-import com.github.fracture_hikari.maid_agent.maid.behavior.StorageWorkTask;
 import com.github.fracture_hikari.maid_agent.maid.task.AgentTask;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
-import net.minecraft.world.entity.ai.behavior.BehaviorControl;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 
 import java.util.List;
@@ -35,6 +30,7 @@ public class MaidExtension implements ILittleMaid {
      */
     @Override
     public void addMaidTask(TaskManager manager) {
+        // Register our Agent task - behaviors are defined in AgentTask.createBrainTasks()
         manager.add(new AgentTask());
     }
 
@@ -47,12 +43,12 @@ public class MaidExtension implements ILittleMaid {
     @Override
     public void registerAIFunctionCall(FunctionCallRegister register) {
         register.register(new ItemSearchFunction());
-        register.register(new RecipeSearchFunction());
         register.register(new StorageItemsFunction());
         register.register(new CraftItemFunction());
         register.register(new GetInventoryFunction());
         register.register(new GetNearbyStorageFunction());
         register.register(new GetTaskQueueFunction());
+        register.register(new GetFuelSourcesFunction());
     }
 
     @Override
@@ -60,23 +56,17 @@ public class MaidExtension implements ILittleMaid {
         manager.addExtraMaidBrain(new IExtraMaidBrain() {
             @Override
             public List<MemoryModuleType<?>> getExtraMemoryTypes() {
+                // Register memory types for all maids (needed for brain to accept them)
+                // Behaviors that USE these memories are registered in AgentTask
                 return List.of(
-                        MemoryModuleRegistry.PENDING_TASK.get(),
                         MemoryModuleRegistry.TASK_QUEUE.get(),
-                        MemoryModuleRegistry.VIEWED_STORAGE.get(),
-                        MemoryModuleRegistry.TASK_RESULT.get()
+                        MemoryModuleRegistry.VIEWED_STORAGE.get()
                 );
             }
-
-            @Override
-            public List<Pair<Integer, BehaviorControl<? super EntityMaid>>> getWorkBehaviors() {
-                // These behaviors run during WORK activity for ALL maid task types
-                // Priority 5 = runs after core behaviors but before random walk
-                List<Pair<Integer, BehaviorControl<? super EntityMaid>>> list = new java.util.ArrayList<>();
-                list.add(Pair.of(5, new StorageMoveTask()));
-                list.add(Pair.of(5, new StorageWorkTask()));
-                return list;
-            }
+            
+            // NOTE: Behaviors are NO LONGER registered globally here.
+            // They are now registered in AgentTask.createBrainTasks()
+            // so they only run when maid's task is set to "Agent".
         });
     }
 }

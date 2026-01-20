@@ -5,6 +5,8 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.init.InitSounds;
 import com.mojang.datafixers.util.Pair;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
+import com.github.fracture_hikari.maid_agent.maid.behavior.StorageMoveTask;
+import com.github.fracture_hikari.maid_agent.maid.behavior.StorageWorkTask;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.entity.ai.behavior.BehaviorControl;
@@ -17,12 +19,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A custom maid task (job) for the agent functionality.
+ * Maid "Agent" task - enables LLM-controlled storage operations.
  * 
- * NOTE: Storage behaviors are now injected via IExtraMaidBrain.getWorkBehaviors()
- * in MaidExtension.java, so they work for ALL task types.
+ * When this task is selected for a maid, she can execute storage commands
+ * from the LLM (via chat). The behaviors registered here consume memories
+ * set by our LLM functions (StorageItemsFunction, GetNearbyStorageFunction).
  * 
- * This task is kept for compatibility but behaviors are now universal.
+ * Memory flow:
+ * - StorageItemsFunction → sets TASK_QUEUE memory
+ * - StorageMoveTask → reads TASK_QUEUE, moves maid to storage
+ * - StorageWorkTask → reads TASK_QUEUE, executes fetch/store, triggers LLM callback
  */
 public class AgentTask implements IMaidTask {
 
@@ -36,6 +42,7 @@ public class AgentTask implements IMaidTask {
 
     /**
      * Icon shown in the task selection GUI.
+     * Using Ender Eye to represent "AI/Agent" capability.
      */
     @Override
     public @NotNull ItemStack getIcon() {
@@ -54,21 +61,29 @@ public class AgentTask implements IMaidTask {
     /**
      * Create the AI behaviors for this task.
      * 
-     * Storage behaviors are now registered via IExtraMaidBrain.getWorkBehaviors()
-     * so they work universally for all task types.
+     * These behaviors run ONLY when the maid's task is set to "Agent".
+     * They consume memories set by our LLM functions.
      * 
      * @param maid The maid entity
-     * @return List of task-specific behaviors (empty - using universal behaviors)
+     * @return List of behaviors for storage operations
      */
     @Override
     public @NotNull List<Pair<Integer, BehaviorControl<? super EntityMaid>>> createBrainTasks(EntityMaid maid) {
-        // Behaviors are now injected via IExtraMaidBrain.getWorkBehaviors()
-        // See MaidExtension.java
-        return new ArrayList<>();
+        List<Pair<Integer, BehaviorControl<? super EntityMaid>>> behaviors = new ArrayList<>();
+        
+        // Priority 5 = runs after core behaviors but before random walk
+        // StorageMoveTask: finds and walks to storage when TASK_QUEUE has pending tasks
+        behaviors.add(Pair.of(5, new StorageMoveTask()));
+        
+        // StorageWorkTask: executes fetch/store when arrived at storage
+        behaviors.add(Pair.of(5, new StorageWorkTask()));
+        
+        return behaviors;
     }
 
     /**
      * Behaviors that run when the maid is riding something.
+     * Currently no ride-specific behaviors for agent task.
      */
     @Override
     public List<Pair<Integer, BehaviorControl<? super EntityMaid>>> createRideBrainTasks(EntityMaid maid) {
@@ -82,6 +97,7 @@ public class AgentTask implements IMaidTask {
 
     @Override
     public boolean enableLookAndRandomWalk(@NotNull EntityMaid maid) {
+        // Allow idle behaviors when no tasks are queued
         return true;
     }
 

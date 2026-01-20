@@ -28,8 +28,34 @@ public class ViewedStorageMemory {
     
     // Ordered list of storages for LLM indexed access
     private final List<StorageTarget> indexedStorages = new ArrayList<>();
+    
+    // Timestamp of last update (game time in ticks)
+    private long lastUpdated = 0;
 
     public ViewedStorageMemory() {
+    }
+    
+    /**
+     * Get the game time when this memory was last updated.
+     */
+    public long getLastUpdated() {
+        return lastUpdated;
+    }
+    
+    /**
+     * Set the last updated timestamp.
+     */
+    public void setLastUpdated(long gameTime) {
+        this.lastUpdated = gameTime;
+    }
+    
+    /**
+     * Get staleness in seconds since last update.
+     * @param currentGameTime Current game time in ticks
+     * @return Seconds since last update
+     */
+    public int getStalenessSeconds(long currentGameTime) {
+        return (int) ((currentGameTime - lastUpdated) / 20);
     }
 
     /**

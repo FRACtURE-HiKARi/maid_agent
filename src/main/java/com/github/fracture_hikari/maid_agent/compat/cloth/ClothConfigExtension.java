@@ -15,7 +15,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
  * Registers config entries in TouhouLittleMaid's config screen.
  */
 @OnlyIn(Dist.CLIENT)
-public class ClothConfigIntegration {
+public class ClothConfigExtension {
     
     @SubscribeEvent
     public static void onAddClothConfig(AddClothConfigEvent event) {

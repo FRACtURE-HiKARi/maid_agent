@@ -116,6 +116,12 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
 
     @Override
     public ToolResponse onToolCall(Params params, EntityMaid maid) {
+        // Storage operations require maid_storage_manager
+        if (!com.github.fracture_hikari.maid_agent.compat.Integrations.maidStorageManager()) {
+            return new ToolResponse(
+                    com.github.fracture_hikari.maid_agent.compat.Integrations.getMsmRequiredMessage());
+        }
+        
         List<Operation> operations = params.operations();
         
         if (operations == null || operations.isEmpty()) {

@@ -1,7 +1,6 @@
 package com.github.fracture_hikari.maid_agent.registry;
 
 import com.github.fracture_hikari.maid_agent.MaidAgent;
-import com.github.fracture_hikari.maid_agent.storage.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.storage.memory.TaskQueue;
 import com.github.fracture_hikari.maid_agent.storage.memory.ViewedStorageMemory;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
@@ -14,21 +13,20 @@ import java.util.Optional;
 
 /**
  * Registry for custom memory module types used by the maid agent.
+ * 
+ * Memory flow:
+ * - TASK_QUEUE: Set by StorageItemsFunction, consumed by StorageMoveTask/StorageWorkTask
+ * - VIEWED_STORAGE: Set by GetNearbyStorageFunction, read by StorageItemsFunction
  */
 public class MemoryModuleRegistry {
     public static final DeferredRegister<MemoryModuleType<?>> MEMORY_MODULES =
             DeferredRegister.create(ForgeRegistries.MEMORY_MODULE_TYPES, MaidAgent.MODID);
 
     /**
-     * Current pending task the maid should execute (fetch/store/craft).
-     * Use TASK_QUEUE instead for multiple task support.
-     */
-    public static final RegistryObject<MemoryModuleType<PendingTask>> PENDING_TASK =
-            MEMORY_MODULES.register("pending_task",
-                    () -> new MemoryModuleType<>(Optional.empty()));
-
-    /**
      * Queue of pending tasks supporting multiple LLM function calls.
+     * 
+     * Producer: StorageItemsFunction (creates TaskQueue with PendingTasks)
+     * Consumer: StorageMoveTask, StorageWorkTask (execute tasks and notify LLM)
      */
     public static final RegistryObject<MemoryModuleType<TaskQueue>> TASK_QUEUE =
             MEMORY_MODULES.register("task_queue",
@@ -36,17 +34,12 @@ public class MemoryModuleRegistry {
 
     /**
      * Memory of discovered storage locations and their cached contents.
+     * 
+     * Producer: GetNearbyStorageFunction (scans and stores nearby storages)
+     * Consumer: StorageItemsFunction (looks up storage by index)
      */
     public static final RegistryObject<MemoryModuleType<ViewedStorageMemory>> VIEWED_STORAGE =
             MEMORY_MODULES.register("viewed_storage",
-                    () -> new MemoryModuleType<>(Optional.empty()));
-
-    /**
-     * Result message from the last completed task.
-     * Used to communicate back to the blocking LLM function call.
-     */
-    public static final RegistryObject<MemoryModuleType<String>> TASK_RESULT =
-            MEMORY_MODULES.register("task_result",
                     () -> new MemoryModuleType<>(Optional.empty()));
 
     public static void register(IEventBus eventBus) {

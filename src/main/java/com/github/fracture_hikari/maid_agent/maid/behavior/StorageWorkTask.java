@@ -3,9 +3,8 @@ package com.github.fracture_hikari.maid_agent.maid.behavior;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.init.InitEntities;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
+import com.github.fracture_hikari.maid_agent.compat.Integrations;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
-import com.github.fracture_hikari.maid_agent.storage.IStorageHandler;
-import com.github.fracture_hikari.maid_agent.storage.StorageManager;
 import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
 import com.github.fracture_hikari.maid_agent.storage.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.storage.memory.TaskQueue;
@@ -19,27 +18,25 @@ import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.registries.ForgeRegistries;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 /**
  * Behavior that executes storage interaction when maid arrives at target.
+ * Uses item handler capabilities for storage interaction.
  * 
- * Pattern from maid_storage_manager (PlaceBehavior):
- * - checkExtraStartConditions: check hasReachedValidTargetOrReset()
- * - canStillUse: return false when work is done
- * - start: initialize work state
- * - tick: do incremental work
- * - stop: cleanup and clear memories
- * 
- * Performs fetch/store operation and triggers AI chat callback with result.
+ * Triggers LLM callback when batch completes.
  */
 public class StorageWorkTask extends Behavior<EntityMaid> {
     private static final double CLOSE_ENOUGH = 2.5;
+    private static final float WALK_SPEED = 0.6f;
     
     private boolean workDone = false;
     private String resultMessage = null;
@@ -52,6 +49,11 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
 
     @Override
     protected boolean checkExtraStartConditions(ServerLevel level, EntityMaid maid) {
+        // This behavior requires MSM
+        if (!Integrations.maidStorageManager()) {
+            return false;
+        }
+        
         // Check if we have a task queue with a current task ready to work
         Optional<TaskQueue> queueOpt = maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get());
         if (queueOpt.isEmpty() || queueOpt.get().isEmpty()) {
@@ -76,13 +78,13 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
             double distSq = maid.distanceToSqr(targetV3d);
             boolean arrived = distSq < Math.pow(CLOSE_ENOUGH, 2);
             
-            // Also check if not arrived but walk target is gone (path failed)
             if (!arrived) {
                 Optional<WalkTarget> walkTarget = maid.getBrain().getMemory(MemoryModuleType.WALK_TARGET);
                 if (walkTarget.isEmpty()) {
-                    // Path failed, reset target
-                    maid.getBrain().eraseMemory(InitEntities.TARGET_POS.get());
-                    return false;
+                    // Walk target was cleared - re-set it to continue moving
+                    BlockPos targetBlockPos = BlockPos.containing(targetV3d);
+                    BehaviorUtils.setWalkAndLookTargetMemories(maid, targetBlockPos, WALK_SPEED, 1);
+                    MaidAgent.LOGGER.debug("StorageWorkTask: Re-setting walk target to {}", targetBlockPos);
                 }
             }
             return arrived;
@@ -91,7 +93,6 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
     
     @Override
     protected boolean canStillUse(ServerLevel level, EntityMaid maid, long gameTime) {
-        // Stop once work is done
         return !workDone;
     }
 
@@ -100,7 +101,6 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
         workDone = false;
         resultMessage = null;
         
-        // Set task to WORKING status
         maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get())
                 .map(TaskQueue::peek)
                 .ifPresent(task -> task.setStatus(PendingTask.TaskStatus.WORKING));
@@ -110,7 +110,6 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
     protected void tick(ServerLevel level, EntityMaid maid, long gameTime) {
         if (workDone) return;
         
-        // Perform the storage operation
         maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get())
                 .map(TaskQueue::peek)
                 .ifPresent(task -> {
@@ -118,6 +117,8 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
                         resultMessage = performFetch(level, maid, task);
                     } else if (task.getType() == PendingTask.TaskType.STORE) {
                         resultMessage = performStore(level, maid, task);
+                    } else if (task.getType() == PendingTask.TaskType.CRAFT) {
+                        resultMessage = performCraft(level, maid, task);
                     } else {
                         resultMessage = "Unknown task type";
                         task.fail(resultMessage);
@@ -126,8 +127,6 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
                 });
     }
     
-    private static final float WALK_SPEED = 0.6f;
-    
     @Override
     protected void stop(ServerLevel level, EntityMaid maid, long gameTime) {
         // Clear movement memories
@@ -135,28 +134,23 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
         maid.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
         maid.getBrain().eraseMemory(MemoryModuleType.LOOK_TARGET);
         
-        // Get the queue
         Optional<TaskQueue> queueOpt = maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get());
         if (queueOpt.isEmpty()) return;
         
         TaskQueue queue = queueOpt.get();
         PendingTask completedTask = queue.peek();
         
-        // Mark current task complete in queue
         if (completedTask != null) {
             boolean success = completedTask.getStatus() == PendingTask.TaskStatus.COMPLETED;
             queue.completeCurrentTask(success, completedTask.getResultMessage(), completedTask.getActualCount());
             MaidAgent.LOGGER.info("Task completed: {} - {}", completedTask.getType(), resultMessage);
         }
         
-        // Check if batch is complete
         if (queue.isBatchComplete()) {
-            // All tasks done - notify LLM with batch summary
             queue.notifyBatchComplete();
             maid.getBrain().eraseMemory(MemoryModuleRegistry.TASK_QUEUE.get());
             MaidAgent.LOGGER.info("Batch complete, notified LLM");
         } else if (!queue.isEmpty()) {
-            // More tasks to do - start walking to next target
             PendingTask nextTask = queue.peek();
             if (nextTask != null && nextTask.getTarget() != null) {
                 nextTask.setStatus(PendingTask.TaskStatus.MOVING);
@@ -171,70 +165,93 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
     private String performFetch(ServerLevel level, EntityMaid maid, PendingTask task) {
         StorageTarget target = task.getTarget();
         if (target == null) {
+            task.fail("No target");
             return "Failed to fetch: no target storage found";
         }
 
         ItemStack targetItem = resolveItem(task.getItemId());
         if (targetItem.isEmpty()) {
+            task.fail("Unknown item");
             return "Failed to fetch: unknown item " + task.getItemId();
         }
 
-        IStorageHandler handler = StorageManager.getInstance()
-                .getHandler(target.getType())
-                .orElse(null);
+        // Get IItemHandler from block entity
+        BlockEntity be = level.getBlockEntity(target.getPos());
+        if (be == null) {
+            task.fail("No storage");
+            return "Failed to fetch: storage block not found";
+        }
         
-        if (handler == null) {
+        IItemHandler storageHandler = be.getCapability(ForgeCapabilities.ITEM_HANDLER, 
+                target.getSideOrNull()).orElse(null);
+        if (storageHandler == null) {
+            task.fail("No handler");
             return "Failed to fetch: storage type not supported";
         }
 
         // Extract items from storage
-        ItemStack extracted = handler.extractItem(level, target.getPos(), 
-                target.getSideOrNull(), targetItem, task.getCount());
-
-        if (extracted.isEmpty()) {
-            task.fail("Item not found");
-            return "Could not find " + getItemName(targetItem) + " in the storage";
-        }
-
-        // Put items in maid's inventory
         IItemHandler maidInv = maid.getAvailableInv(false);
-        ItemStack remaining = extracted.copy();
-        for (int i = 0; i < maidInv.getSlots() && !remaining.isEmpty(); i++) {
-            remaining = maidInv.insertItem(i, remaining, false);
+        int fetchedCount = 0;
+        int toFetch = task.getCount();
+
+        for (int i = 0; i < storageHandler.getSlots() && fetchedCount < toFetch; i++) {
+            ItemStack slotStack = storageHandler.getStackInSlot(i);
+            if (ItemStack.isSameItemSameTags(slotStack, targetItem)) {
+                int extractCount = Math.min(slotStack.getCount(), toFetch - fetchedCount);
+                ItemStack extracted = storageHandler.extractItem(i, extractCount, false);
+                
+                if (!extracted.isEmpty()) {
+                    // Try to insert into maid inventory
+                    ItemStack remaining = extracted.copy();
+                    for (int j = 0; j < maidInv.getSlots() && !remaining.isEmpty(); j++) {
+                        remaining = maidInv.insertItem(j, remaining, false);
+                    }
+                    fetchedCount += extracted.getCount() - remaining.getCount();
+                    
+                    // Put back what couldn't fit
+                    if (!remaining.isEmpty()) {
+                        storageHandler.insertItem(i, remaining, false);
+                    }
+                }
+            }
         }
 
-        int fetchedCount = extracted.getCount() - remaining.getCount();
-        
         if (fetchedCount > 0) {
             task.complete("Fetched items", fetchedCount);
             return String.format("Successfully fetched %d %s from storage", 
                     fetchedCount, getItemName(targetItem));
         } else {
-            task.fail("Inventory full");
-            return "My inventory is full, couldn't store the fetched items";
+            task.fail("Item not found");
+            return "Could not find " + getItemName(targetItem) + " in the storage";
         }
     }
 
     private String performStore(ServerLevel level, EntityMaid maid, PendingTask task) {
         StorageTarget target = task.getTarget();
         if (target == null) {
+            task.fail("No target");
             return "Failed to store: no target storage found";
         }
 
         ItemStack targetItem = resolveItem(task.getItemId());
         if (targetItem.isEmpty()) {
+            task.fail("Unknown item");
             return "Failed to store: unknown item " + task.getItemId();
         }
 
-        IStorageHandler handler = StorageManager.getInstance()
-                .getHandler(target.getType())
-                .orElse(null);
+        BlockEntity be = level.getBlockEntity(target.getPos());
+        if (be == null) {
+            task.fail("No storage");
+            return "Failed to store: storage block not found";
+        }
         
-        if (handler == null) {
+        IItemHandler storageHandler = be.getCapability(ForgeCapabilities.ITEM_HANDLER, 
+                target.getSideOrNull()).orElse(null);
+        if (storageHandler == null) {
+            task.fail("No handler");
             return "Failed to store: storage type not supported";
         }
 
-        // Find and transfer items from maid's inventory
         IItemHandler maidInv = maid.getAvailableInv(false);
         int toStore = task.getCount();
         int stored = 0;
@@ -247,15 +264,18 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
                 ItemStack toInsert = maidInv.extractItem(i, extractCount, false);
                 
                 if (!toInsert.isEmpty()) {
-                    ItemStack leftover = handler.insertItem(level, target.getPos(), 
-                            target.getSideOrNull(), toInsert);
+                    // Try to insert into storage
+                    ItemStack remaining = toInsert.copy();
+                    for (int j = 0; j < storageHandler.getSlots() && !remaining.isEmpty(); j++) {
+                        remaining = storageHandler.insertItem(j, remaining, false);
+                    }
                     
-                    int insertedCount = toInsert.getCount() - leftover.getCount();
+                    int insertedCount = toInsert.getCount() - remaining.getCount();
                     stored += insertedCount;
                     
                     // Put back what couldn't be stored
-                    if (!leftover.isEmpty()) {
-                        maidInv.insertItem(i, leftover, false);
+                    if (!remaining.isEmpty()) {
+                        maidInv.insertItem(i, remaining, false);
                     }
                 }
             }
@@ -287,5 +307,120 @@ public class StorageWorkTask extends Behavior<EntityMaid> {
 
     private String getItemName(ItemStack stack) {
         return stack.getHoverName().getString();
+    }
+    
+    /**
+     * Perform crafting at a workstation using maid's inventory.
+     */
+    private String performCraft(ServerLevel level, EntityMaid maid, PendingTask task) {
+        ItemStack targetItem = resolveItem(task.getItemId());
+        if (targetItem.isEmpty()) {
+            task.fail("Unknown item");
+            return "Failed to craft: unknown item " + task.getItemId();
+        }
+        
+        // Get pre-computed crafting steps (sub-recipes first, main recipe last)
+        java.util.LinkedHashMap<String, Integer> craftingSteps = task.getCraftingSteps();
+        if (craftingSteps == null || craftingSteps.isEmpty()) {
+            // Fallback: just use the main recipe
+            craftingSteps = new java.util.LinkedHashMap<>();
+            craftingSteps.put(task.getRecipeId(), task.getCount());
+        }
+        
+        IItemHandler maidInv = maid.getAvailableInv(false);
+        int finalCraftCount = 0;
+        
+        // Execute each step in order (sub-recipes first)
+        for (java.util.Map.Entry<String, Integer> step : craftingSteps.entrySet()) {
+            String stepRecipeId = step.getKey();
+            int neededCrafts = step.getValue();
+            
+            ResourceLocation recipeRL = ResourceLocation.tryParse(stepRecipeId);
+            if (recipeRL == null) continue;
+            
+            Optional<net.minecraft.world.item.crafting.CraftingRecipe> stepRecipe = 
+                    level.getRecipeManager()
+                    .getAllRecipesFor(net.minecraft.world.item.crafting.RecipeType.CRAFTING)
+                    .stream()
+                    .filter(r -> r.getId().equals(recipeRL))
+                    .findFirst();
+            
+            if (stepRecipe.isEmpty()) {
+                MaidAgent.LOGGER.warn("Recipe not found: {}", stepRecipeId);
+                continue;
+            }
+            
+            net.minecraft.world.item.crafting.CraftingRecipe recipe = stepRecipe.get();
+            boolean isMainRecipe = stepRecipeId.equals(task.getRecipeId());
+            
+            // Craft exactly the needed amount
+            int craftCountForStep = 0;
+            
+            while (craftCountForStep < neededCrafts && hasIngredients(maidInv, recipe)) {
+                consumeIngredients(maidInv, recipe);
+                ItemStack result = recipe.getResultItem(level.registryAccess()).copy();
+                for (int i = 0; i < maidInv.getSlots(); i++) {
+                    result = maidInv.insertItem(i, result, false);
+                    if (result.isEmpty()) break;
+                }
+                craftCountForStep++;
+                
+                if (isMainRecipe) {
+                    finalCraftCount++;
+                }
+            }
+            
+            if (craftCountForStep > 0) {
+                MaidAgent.LOGGER.info("Crafted {} of {} (step: {}, needed: {})", 
+                        craftCountForStep, recipe.getResultItem(level.registryAccess()).getItem(), 
+                        stepRecipeId, neededCrafts);
+            }
+        }
+        
+        if (finalCraftCount > 0) {
+            task.complete("Crafted items", finalCraftCount);
+            return String.format("Successfully crafted %d %s", finalCraftCount, getItemName(targetItem));
+        } else {
+            task.fail("Missing ingredients");
+            return "Could not craft " + getItemName(targetItem) + " (missing ingredients)";
+        }
+    }
+    
+    private boolean hasIngredients(IItemHandler inv, net.minecraft.world.item.crafting.CraftingRecipe recipe) {
+        List<net.minecraft.world.item.crafting.Ingredient> ingredients = recipe.getIngredients();
+        Map<Integer, Integer> usedSlots = new java.util.HashMap<>();
+        
+        for (net.minecraft.world.item.crafting.Ingredient ingredient : ingredients) {
+            if (ingredient.isEmpty()) continue;
+            
+            boolean found = false;
+            for (int i = 0; i < inv.getSlots(); i++) {
+                ItemStack inSlot = inv.getStackInSlot(i);
+                int alreadyUsed = usedSlots.getOrDefault(i, 0);
+                if (ingredient.test(inSlot) && inSlot.getCount() > alreadyUsed) {
+                    usedSlots.merge(i, 1, Integer::sum);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return false;
+        }
+        return true;
+    }
+    
+    private void consumeIngredients(IItemHandler inv, net.minecraft.world.item.crafting.CraftingRecipe recipe) {
+        List<net.minecraft.world.item.crafting.Ingredient> ingredients = recipe.getIngredients();
+        
+        for (net.minecraft.world.item.crafting.Ingredient ingredient : ingredients) {
+            if (ingredient.isEmpty()) continue;
+            
+            for (int i = 0; i < inv.getSlots(); i++) {
+                ItemStack inSlot = inv.getStackInSlot(i);
+                if (ingredient.test(inSlot) && !inSlot.isEmpty()) {
+                    inv.extractItem(i, 1, false);
+                    break;
+                }
+            }
+        }
     }
 }

@@ -24,6 +24,13 @@ public class PendingTask {
         COMPLETED,  // Task finished successfully
         FAILED      // Task failed
     }
+    
+    public enum WorkstationType {
+        CRAFTING_TABLE,
+        FURNACE,
+        SMOKER,
+        BLAST_FURNACE
+    }
 
     private final TaskType type;
     private final String itemId;
@@ -35,6 +42,12 @@ public class PendingTask {
     private String resultMessage;
     private int actualCount; // Actual items fetched/stored/crafted
     private AIChatCallback callback;
+    @Nullable
+    private WorkstationType workstationType;  // For CRAFT tasks
+    @Nullable
+    private String recipeId;  // For CRAFT tasks - main recipe
+    @Nullable
+    private java.util.LinkedHashMap<String, Integer> craftingSteps;  // Ordered recipe ID -> craft count (sub-recipes first)
 
     public PendingTask(EntityMaid maid, TaskType type, String itemId, int count) {
         this(maid, type, itemId, count, null);
@@ -49,6 +62,9 @@ public class PendingTask {
         this.resultMessage = null;
         this.actualCount = 0;
         this.callback = new AIChatCallback(maid); // TODO: replace this with proper client info.
+        this.workstationType = null;
+        this.recipeId = null;
+        this.craftingSteps = null;
     }
 
     public void notifyComplete() {
@@ -113,6 +129,33 @@ public class PendingTask {
     public void fail(String message) {
         this.status = TaskStatus.FAILED;
         this.resultMessage = message;
+    }
+    
+    @Nullable
+    public WorkstationType getWorkstationType() {
+        return workstationType;
+    }
+    
+    public void setWorkstationType(@Nullable WorkstationType workstationType) {
+        this.workstationType = workstationType;
+    }
+    
+    @Nullable
+    public String getRecipeId() {
+        return recipeId;
+    }
+    
+    public void setRecipeId(@Nullable String recipeId) {
+        this.recipeId = recipeId;
+    }
+    
+    @Nullable
+    public java.util.LinkedHashMap<String, Integer> getCraftingSteps() {
+        return craftingSteps;
+    }
+    
+    public void setCraftingSteps(@Nullable java.util.LinkedHashMap<String, Integer> craftingSteps) {
+        this.craftingSteps = craftingSteps;
     }
 
     @Override

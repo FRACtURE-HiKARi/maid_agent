@@ -20,13 +20,17 @@ public class StorageTarget {
     private final Direction side;
 
     public StorageTarget(ResourceLocation type, BlockPos pos) {
-        this(type, pos, null);
+        this(type, pos, (Direction) null);
     }
 
     public StorageTarget(ResourceLocation type, BlockPos pos, @Nullable Direction side) {
         this.type = type;
         this.pos = pos;
         this.side = side;
+    }
+    
+    public StorageTarget(ResourceLocation type, BlockPos pos, Optional<Direction> side) {
+        this(type, pos, side.orElse(null));
     }
 
     public ResourceLocation getType() {

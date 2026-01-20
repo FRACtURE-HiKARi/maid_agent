@@ -12,6 +12,7 @@ public final class MaidAgentConfig {
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
         JeiConfig.init(builder);
+        CraftConfig.init(builder);
         SPEC = builder.build();
     }
 }

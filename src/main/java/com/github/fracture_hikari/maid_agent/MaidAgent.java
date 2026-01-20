@@ -1,6 +1,6 @@
 package com.github.fracture_hikari.maid_agent;
 
-import com.github.fracture_hikari.maid_agent.compat.cloth.ClothConfigIntegration;
+import com.github.fracture_hikari.maid_agent.compat.cloth.ClothConfigExtension;
 import com.github.fracture_hikari.maid_agent.config.MaidAgentConfig;
 import com.github.fracture_hikari.maid_agent.recipe.RecipeFormatterRegistry;
 import com.github.fracture_hikari.maid_agent.recipe.formatter.CookingRecipeFormatter;
@@ -38,7 +38,7 @@ public class MaidAgent {
         
         // Register client-side cloth config integration
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> {
-            MinecraftForge.EVENT_BUS.register(ClothConfigIntegration.class);
+            MinecraftForge.EVENT_BUS.register(ClothConfigExtension.class);
             LOGGER.info("Registered Cloth Config integration");
         });
     }
