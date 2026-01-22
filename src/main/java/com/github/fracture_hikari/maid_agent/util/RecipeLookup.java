@@ -1,5 +1,12 @@
 package com.github.fracture_hikari.maid_agent.util;
 
+import mezz.jei.api.constants.RecipeTypes;
+import mezz.jei.api.constants.VanillaTypes;
+import mezz.jei.api.recipe.IFocus;
+import mezz.jei.api.recipe.IFocusFactory;
+import mezz.jei.api.recipe.IRecipeManager;
+import mezz.jei.api.recipe.RecipeIngredientRole;
+import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -10,29 +17,36 @@ import net.minecraft.world.item.crafting.SmeltingRecipe;
 import studio.fantasyit.maid_storage_manager.util.RecipeUtil;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
- * Utility class for recipe lookups.
- * Provides methods to find and analyze recipes.
+ * Unified recipe lookup utility with JEI-first approach and vanilla fallback.
+ * All recipe lookups across the project should go through this class.
+ * 
+ * JEI provides better modded recipe support and caching.
  */
 public final class RecipeLookup {
     
     private RecipeLookup() {} // Prevent instantiation
     
+    // ========== CRAFTING RECIPES ==========
+    
     /**
      * Find all crafting recipes that produce the target item.
-     * @param level Server level for recipe manager access
-     * @param target The target item to craft
-     * @param limit Maximum number of recipes to return
-     * @return List of matching recipes
+     * Uses JEI when available for better modded support.
      */
     public static List<CraftingRecipe> findByOutput(ServerLevel level, ItemStack target, int limit) {
-        return level.getRecipeManager()
-                .getAllRecipesFor(RecipeType.CRAFTING)
-                .stream()
-                .filter(r -> ItemStack.isSameItem(r.getResultItem(level.registryAccess()), target))
-                .limit(limit)
-                .toList();
+        // Try JEI first
+        if (JeiRuntimeHolder.isAvailable()) {
+            try {
+                List<CraftingRecipe> result = findByOutputWithJei(target, limit);
+                if (!result.isEmpty()) return result;
+            } catch (Exception e) {
+                // Fall through to vanilla
+            }
+        }
+        // Vanilla fallback
+        return findByOutputVanilla(level, target, limit);
     }
     
     /**
@@ -43,19 +57,27 @@ public final class RecipeLookup {
     }
     
     /**
+     * Find crafting recipes that use the given item as INPUT.
+     * Only available with JEI - returns empty list without JEI.
+     */
+    public static List<CraftingRecipe> findByInput(ItemStack ingredient, int limit) {
+        if (!JeiRuntimeHolder.isAvailable()) {
+            return Collections.emptyList();
+        }
+        try {
+            return findByInputWithJei(ingredient, limit);
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+    }
+    
+    /**
      * Find crafting recipe by ID.
-     * @param level Server level
-     * @param recipeId Recipe ID string (e.g., "minecraft:stick")
-     * @return Optional containing the recipe if found
      */
     public static Optional<CraftingRecipe> findById(ServerLevel level, String recipeId) {
         ResourceLocation id = ResourceLocation.tryParse(recipeId);
         if (id == null) return Optional.empty();
-        return level.getRecipeManager()
-                .getAllRecipesFor(RecipeType.CRAFTING)
-                .stream()
-                .filter(r -> r.getId().equals(id))
-                .findFirst();
+        return findById(level, id);
     }
     
     /**
@@ -70,50 +92,115 @@ public final class RecipeLookup {
     }
     
     /**
-     * Find smelting recipe for item.
-     * Delegates to MSM's RecipeUtil.
+     * Find smelting recipe by ID.
+     */
+    public static Optional<SmeltingRecipe> findSmeltingById(ServerLevel level, String recipeId) {
+        ResourceLocation id = ResourceLocation.tryParse(recipeId);
+        if (id == null) return Optional.empty();
+        return level.getRecipeManager()
+                .getAllRecipesFor(RecipeType.SMELTING)
+                .stream()
+                .filter(r -> r.getId().equals(id))
+                .findFirst();
+    }
+    
+    // ========== SMELTING RECIPES ==========
+    
+    /**
+     * Find first smelting recipe for item.
+     * Uses JEI when available, falls back to MSM's RecipeUtil.
      */
     public static Optional<SmeltingRecipe> findSmeltingByOutput(ServerLevel level, ItemStack target) {
-        return RecipeUtil.getSmeltingRecipe(level, target);
+        List<SmeltingRecipe> all = findAllSmeltingByOutput(level, target, 1);
+        return all.isEmpty() ? Optional.empty() : Optional.of(all.get(0));
     }
     
     /**
-     * Analyze recipe ingredients, merging duplicates.
-     * @param ingredients List of ingredients from recipe
-     * @param multiplier Multiply counts (for crafting multiple)
-     * @return List of ingredient needs with merged counts
+     * Find ALL smelting recipes that produce the target item.
+     * E.g., iron_ingot can come from iron_ore OR raw_iron.
+     * Uses JEI when available for better modded support.
      */
-    public static List<IngredientNeed> analyzeIngredients(List<Ingredient> ingredients, int multiplier) {
-        Map<String, Integer> needs = new LinkedHashMap<>();
-        for (Ingredient ingredient : ingredients) {
-            if (ingredient.isEmpty()) continue;
-            ItemStack[] items = ingredient.getItems();
-            if (items.length > 0) {
-                String id = ItemIdUtils.getId(items[0]);
-                needs.merge(id, multiplier, Integer::sum);
+    public static List<SmeltingRecipe> findAllSmeltingByOutput(ServerLevel level, ItemStack target, int limit) {
+        // Try JEI first
+        if (JeiRuntimeHolder.isAvailable()) {
+            try {
+                List<SmeltingRecipe> result = findAllSmeltingByOutputWithJei(target, limit);
+                if (!result.isEmpty()) return result;
+            } catch (Exception e) {
+                // Fall through to vanilla
             }
         }
-        return needs.entrySet().stream()
-                .map(e -> new IngredientNeed(e.getKey(), e.getValue()))
+        // Vanilla fallback
+        return findAllSmeltingByOutputVanilla(level, target, limit);
+    }
+    
+    private static List<SmeltingRecipe> findAllSmeltingByOutputWithJei(ItemStack target, int limit) {
+        IJeiRuntime runtime = JeiRuntimeHolder.getRuntime().orElseThrow();
+        IRecipeManager recipeManager = runtime.getRecipeManager();
+        IFocusFactory focusFactory = runtime.getJeiHelpers().getFocusFactory();
+        
+        IFocus<ItemStack> focus = focusFactory.createFocus(
+                RecipeIngredientRole.OUTPUT, VanillaTypes.ITEM_STACK, target);
+        
+        return recipeManager.createRecipeLookup(RecipeTypes.SMELTING)
+                .limitFocus(List.of(focus))
+                .get()
+                .limit(limit)
+                .collect(Collectors.toList());
+    }
+    
+    private static List<SmeltingRecipe> findAllSmeltingByOutputVanilla(ServerLevel level, ItemStack target, int limit) {
+        return level.getRecipeManager()
+                .getAllRecipesFor(RecipeType.SMELTING)
+                .stream()
+                .filter(r -> ItemStack.isSameItem(r.getResultItem(level.registryAccess()), target))
+                .limit(limit)
                 .toList();
     }
     
+    private static List<CraftingRecipe> findByOutputWithJei(ItemStack target, int limit) {
+        IJeiRuntime runtime = JeiRuntimeHolder.getRuntime().orElseThrow();
+        IRecipeManager recipeManager = runtime.getRecipeManager();
+        IFocusFactory focusFactory = runtime.getJeiHelpers().getFocusFactory();
+        
+        IFocus<ItemStack> focus = focusFactory.createFocus(
+                RecipeIngredientRole.OUTPUT, VanillaTypes.ITEM_STACK, target);
+        
+        return recipeManager.createRecipeLookup(RecipeTypes.CRAFTING)
+                .limitFocus(List.of(focus))
+                .get()
+                .limit(limit)
+                .collect(Collectors.toList());
+    }
+    
+    private static List<CraftingRecipe> findByInputWithJei(ItemStack ingredient, int limit) {
+        IJeiRuntime runtime = JeiRuntimeHolder.getRuntime().orElseThrow();
+        IRecipeManager recipeManager = runtime.getRecipeManager();
+        IFocusFactory focusFactory = runtime.getJeiHelpers().getFocusFactory();
+        
+        IFocus<ItemStack> focus = focusFactory.createFocus(
+                RecipeIngredientRole.INPUT, VanillaTypes.ITEM_STACK, ingredient);
+        
+        return recipeManager.createRecipeLookup(RecipeTypes.CRAFTING)
+                .limitFocus(List.of(focus))
+                .get()
+                .limit(limit)
+                .collect(Collectors.toList());
+    }
+
+    private static List<CraftingRecipe> findByOutputVanilla(ServerLevel level, ItemStack target, int limit) {
+        return level.getRecipeManager()
+                .getAllRecipesFor(RecipeType.CRAFTING)
+                .stream()
+                .filter(r -> ItemStack.isSameItem(r.getResultItem(level.registryAccess()), target))
+                .limit(limit)
+                .toList();
+    }
+
     /**
      * Check if recipe is shapeless.
      */
     public static boolean isShapeless(CraftingRecipe recipe) {
         return recipe.getClass().getSimpleName().contains("Shapeless");
     }
-    
-    /**
-     * Get recipe type string ("shaped" or "shapeless").
-     */
-    public static String getTypeString(CraftingRecipe recipe) {
-        return isShapeless(recipe) ? "shapeless" : "shaped";
-    }
-    
-    /**
-     * Represents an ingredient requirement.
-     */
-    public record IngredientNeed(String itemId, int count) {}
 }

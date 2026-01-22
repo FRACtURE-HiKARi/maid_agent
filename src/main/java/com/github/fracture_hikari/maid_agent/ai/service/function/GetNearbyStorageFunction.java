@@ -11,8 +11,8 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
-import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
-import com.github.fracture_hikari.maid_agent.storage.memory.ViewedStorageMemory;
+import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
+import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
 import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -104,11 +104,17 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
                     Target msmTarget = MaidStorage.getInstance().isValidTarget(level, maid, checkPos, null);
                     
                     if (msmTarget != null) {
+                        // Filter out furnaces and processing machines - they're not storage
+                        BlockEntity be = level.getBlockEntity(checkPos);
+                        if (be instanceof net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity) {
+                            continue; // Skip furnaces, smokers, blast furnaces
+                        }
+                        
                         // Get contents via IItemHandler
                         List<ItemStack> contents = getContentsFromTarget(level, msmTarget);
                         
                         // Convert to our StorageTarget for memory storage
-                        StorageTarget ourTarget = new StorageTarget(
+                        WorkBlockTarget ourTarget = new WorkBlockTarget(
                                 msmTarget.getType(), 
                                 msmTarget.getPos(), 
                                 msmTarget.getSide());
@@ -187,19 +193,17 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
         if (be != null) {
             IItemHandler handler = be.getCapability(ForgeCapabilities.ITEM_HANDLER, 
                     target.getSide().orElse(null)).orElse(null);
-            if (handler != null) {
-                for (int i = 0; i < handler.getSlots(); i++) {
-                    ItemStack stack = handler.getStackInSlot(i);
-                    if (!stack.isEmpty()) {
-                        contents.add(stack.copy());
-                    }
+            for (int i = 0; i < handler.getSlots(); i++) {
+                ItemStack stack = handler.getStackInSlot(i);
+                if (!stack.isEmpty()) {
+                    contents.add(stack.copy());
                 }
             }
         }
         return contents;
     }
 
-    private record StorageInfo(StorageTarget target, List<ItemStack> contents, int distance) {}
+    private record StorageInfo(WorkBlockTarget target, List<ItemStack> contents, int distance) {}
 
     public record Params(int radius) {}
 }

@@ -13,7 +13,10 @@ Introduce more LLM callable functions and behaviors.
 - better prompts
 - dedicated task config
 - client locale
+- use chest interaction from storage manager
+- 
 
 ## Future Plans
 - maidsoul kitchen capability
+- TLM's base activities call.
 - 

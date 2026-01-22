@@ -1,8 +1,8 @@
 package com.github.fracture_hikari.maid_agent.ai.service.function;
 
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
-import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
-import com.github.fracture_hikari.maid_agent.storage.memory.ViewedStorageMemory;
+import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
+import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
 import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.IFunctionCall;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.response.ToolResponse;
@@ -20,6 +20,7 @@ import java.util.*;
  * LLM function to find fuel items in known storages.
  * Returns fuel information with items_per_fuel (how many items each fuel can process).
  */
+@Deprecated
 public class GetFuelSourcesFunction implements IFunctionCall<GetFuelSourcesFunction.Params> {
     private static final String FUNCTION_ID = "get_fuel_sources";
     private static final String FUNCTION_DESC = """
@@ -67,10 +68,10 @@ public class GetFuelSourcesFunction implements IFunctionCall<GetFuelSourcesFunct
         
         // Scan all known storages for fuel
         for (int i = 0; i < memory.getStorageCount(); i++) {
-            Optional<StorageTarget> targetOpt = memory.getStorageByIndex(i);
+            Optional<WorkBlockTarget> targetOpt = memory.getStorageByIndex(i);
             if (targetOpt.isEmpty()) continue;
             
-            StorageTarget target = targetOpt.get();
+            WorkBlockTarget target = targetOpt.get();
             List<ViewedStorageMemory.ItemCount> contents = memory.getContents(target);
             
             List<FuelItem> fuels = new ArrayList<>();

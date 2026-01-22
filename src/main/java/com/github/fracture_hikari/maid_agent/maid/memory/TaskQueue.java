@@ -1,4 +1,4 @@
-package com.github.fracture_hikari.maid_agent.storage.memory;
+package com.github.fracture_hikari.maid_agent.maid.memory;
 
 import com.github.fracture_hikari.maid_agent.ai.AIChatCallback;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
@@ -60,6 +60,15 @@ public class TaskQueue {
      */
     public int size() {
         return tasks.size();
+    }
+    
+    /**
+     * Clear all tasks from the queue.
+     */
+    public void clear() {
+        tasks.clear();
+        completedResults.clear();
+        totalTasksInBatch = 0;
     }
     
     /**
@@ -156,8 +165,18 @@ public class TaskQueue {
     
     /**
      * Notify LLM with batch summary.
+     * Only notifies if there are no active processing jobs pending.
      */
     public void notifyBatchComplete() {
+        
+        var brain = maid.getBrain();
+        var processingMemOpt = brain.getMemory(com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry.PROCESSING_JOBS.get());
+        
+        if (processingMemOpt.isPresent() && processingMemOpt.get().hasActiveJobs()) {
+            // Process jobs still running - defer notification
+            return;
+        }
+        
         String summary = getBatchSummary();
         callback.notifyTaskComplete(summary);
     }

@@ -1,6 +1,7 @@
 package com.github.fracture_hikari.maid_agent.recipe;
 
 import com.github.fracture_hikari.maid_agent.config.CraftConfig;
+import com.github.fracture_hikari.maid_agent.util.RecipeLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -9,7 +10,6 @@ import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SmeltingRecipe;
-import studio.fantasyit.maid_storage_manager.util.RecipeUtil;
 
 import java.util.*;
 
@@ -39,25 +39,20 @@ public class CraftingTreeEvaluator {
     public List<EvaluatedTree> evaluateRecipes(ItemStack target, int count) {
         List<EvaluatedTree> results = new ArrayList<>();
         
-        // Get all crafting recipes
-        List<CraftingRecipe> craftingRecipes = level.getRecipeManager()
-                .getAllRecipesFor(RecipeType.CRAFTING)
-                .stream()
-                .filter(r -> ItemStack.isSameItem(r.getResultItem(level.registryAccess()), target))
-                .limit(20) // Reasonable limit
-                .toList();
+        // Get all crafting recipes using RecipeLookup
+        List<CraftingRecipe> craftingRecipes = RecipeLookup.findByOutput(level, target, 20);
         
         for (CraftingRecipe recipe : craftingRecipes) {
             EvaluatedTree tree = evaluateTree(recipe, count, 0, new HashMap<>(availableItems));
             results.add(tree);
         }
         
-        // Check smelting
-        Optional<SmeltingRecipe> smeltingRecipe = RecipeUtil.getSmeltingRecipe(level, target);
-        smeltingRecipe.ifPresent(recipe -> {
+        // Get ALL smelting recipes (e.g., iron_ore AND raw_iron → iron_ingot)
+        List<SmeltingRecipe> smeltingRecipes = RecipeLookup.findAllSmeltingByOutput(level, target, 10);
+        for (SmeltingRecipe recipe : smeltingRecipes) {
             EvaluatedTree tree = evaluateSmeltingTree(recipe, count, 0, new HashMap<>(availableItems));
             results.add(tree);
-        });
+        }
         
         // Sort: valid trees first, then by missing count
         results.sort((a, b) -> {
@@ -108,7 +103,7 @@ public class CraftingTreeEvaluator {
         
         return new EvaluatedTree(recipeId, "minecraft:crafting_table", 
                 output.getItem().builtInRegistryHolder().key().location().toString(),
-                count, ingredients, totalMissing, false);
+                count, ingredients, totalMissing);
     }
     
     private EvaluatedTree evaluateSmeltingTree(SmeltingRecipe recipe, int count, int depth, Map<String, Integer> remaining) {
@@ -130,20 +125,78 @@ public class CraftingTreeEvaluator {
             }
         }
         
-        // Scale by count and calculate total missing
+        // Scale by count, assign slot 0 (input), and calculate total missing
         List<IngredientResult> ingredients = new ArrayList<>();
         int totalMissing = 0;
         for (IngredientResult ir : mergedIngredients.values()) {
             IngredientResult scaled = ir.scale(count);
-            ingredients.add(scaled);
-            totalMissing += scaled.getMissing();
+            // Assign slot 0 (furnace input) to all smelting ingredients
+            IngredientResult withSlot = new IngredientResult(
+                    scaled.getItemId(), scaled.getNeed(), scaled.getHave(), scaled.getMissing(), 
+                    scaled.getSubTree(), 0);  // slot 0 = input
+            ingredients.add(withSlot);
+            totalMissing += withSlot.getMissing();
         }
         
-        // TODO: Check fuel availability
+        // Calculate fuel needed and add as ingredient
+        IngredientResult fuelResult = calculateFuelNeeded(count, remaining);
+        if (fuelResult != null) {
+            ingredients.add(fuelResult);
+            totalMissing += fuelResult.getMissing();
+        }
         
         return new EvaluatedTree(recipeId, "minecraft:furnace",
                 output.getItem().builtInRegistryHolder().key().location().toString(),
-                count, ingredients, totalMissing, true);
+                count, ingredients, totalMissing);
+    }
+    
+    /**
+     * Calculate fuel needed for smelting. Finds best fuel in inventory (longest burn time).
+     * Returns an IngredientResult representing fuel requirement.
+     */
+    private IngredientResult calculateFuelNeeded(int itemsToSmelt, Map<String, Integer> remaining) {
+        // 200 ticks per smelt operation
+        int ticksNeeded = itemsToSmelt * 200;
+        
+        // Find best fuel available (longest burn time = min items needed)
+        String bestFuelId = null;
+        int bestBurnTime = 0;
+        int bestHave = 0;
+        
+        for (Map.Entry<String, Integer> entry : remaining.entrySet()) {
+            String itemId = entry.getKey();
+            int have = entry.getValue();
+            if (have <= 0) continue;
+            
+            ResourceLocation rl = ResourceLocation.tryParse(itemId);
+            if (rl == null || !BuiltInRegistries.ITEM.containsKey(rl)) continue;
+            
+            ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(rl));
+            int burnTime = net.minecraftforge.common.ForgeHooks.getBurnTime(stack, null);
+            
+            if (burnTime > bestBurnTime) {
+                bestBurnTime = burnTime;
+                bestFuelId = itemId;
+                bestHave = have;
+            }
+        }
+        
+        if (bestFuelId == null || bestBurnTime <= 0) {
+            // No fuel found - return a placeholder showing coal is needed
+            int coalNeeded = (int) Math.ceil((double) ticksNeeded / 1600); // Coal burns 1600 ticks
+        return new IngredientResult("minecraft:coal", coalNeeded, 0, coalNeeded, null, 1);  // slot 1 = fuel
+        }
+        
+        // Calculate how many of this fuel we need
+        int fuelNeeded = (int) Math.ceil((double) ticksNeeded / bestBurnTime);
+        int missing = Math.max(0, fuelNeeded - bestHave);
+        
+        // Consume fuel from remaining
+        if (fuelNeeded <= bestHave) {
+            remaining.merge(bestFuelId, -fuelNeeded, Integer::sum);
+        }
+        
+        return new IngredientResult(bestFuelId, fuelNeeded, bestHave, missing, null, 1);  // slot 1 = fuel
     }
     
     private IngredientResult evaluateIngredient(Ingredient ingredient, int needed, int depth, Map<String, Integer> remaining) {
@@ -171,12 +224,7 @@ public class CraftingTreeEvaluator {
                     ItemStack targetStack = new ItemStack(BuiltInRegistries.ITEM.get(rl));
                     
                     // Find ALL craftable recipes and pick the best one
-                    List<CraftingRecipe> subRecipes = level.getRecipeManager()
-                            .getAllRecipesFor(RecipeType.CRAFTING)
-                            .stream()
-                            .filter(r -> ItemStack.isSameItem(r.getResultItem(level.registryAccess()), targetStack))
-                            .limit(10) // Reasonable limit
-                            .toList();
+                    List<CraftingRecipe> subRecipes = RecipeLookup.findByOutput(level, targetStack, 10);
                     
                     // Evaluate each and pick the best (most complete)
                     EvaluatedTree bestSubTree = null;
@@ -226,17 +274,15 @@ public class CraftingTreeEvaluator {
         private final int count;
         private final List<IngredientResult> ingredients;
         private final int missingCount;
-        private final boolean requiresFuel;
         
         public EvaluatedTree(String recipeId, String workstation, String output, 
-                             int count, List<IngredientResult> ingredients, int missingCount, boolean requiresFuel) {
+                             int count, List<IngredientResult> ingredients, int missingCount) {
             this.recipeId = recipeId;
             this.workstation = workstation;
             this.output = output;
             this.count = count;
             this.ingredients = ingredients;
             this.missingCount = missingCount;
-            this.requiresFuel = requiresFuel;
         }
         
         public boolean isComplete() { return missingCount == 0; }
@@ -244,7 +290,6 @@ public class CraftingTreeEvaluator {
         public String getRecipeId() { return recipeId; }
         public String getWorkstation() { return workstation; }
         public List<IngredientResult> getIngredients() { return ingredients; }
-        public boolean requiresFuel() { return requiresFuel; }
         
         public String toJson() {
             StringBuilder sb = new StringBuilder();
@@ -260,9 +305,6 @@ public class CraftingTreeEvaluator {
                 sb.append(ingredients.get(i).toJson());
             }
             sb.append("], ");
-            if (requiresFuel) {
-                sb.append("\"requires_fuel\": true, ");
-            }
             sb.append(String.format("\"output\": \"%s\", \"count\": %d}", output, count));
             return sb.toString();
         }
@@ -289,6 +331,7 @@ public class CraftingTreeEvaluator {
     
     /**
      * Result of evaluating an ingredient.
+     * Includes slot assignment for PROCESS tasks (0=input, 1=fuel).
      */
     public static class IngredientResult {
         private final String itemId;
@@ -296,19 +339,28 @@ public class CraftingTreeEvaluator {
         private final int have;
         private final int missing;
         private final EvaluatedTree subTree;
+        private final int targetSlot;  // -1 for crafting, 0=input, 1=fuel for furnace
         
         public IngredientResult(String itemId, int need, int have, int missing, EvaluatedTree subTree) {
+            this(itemId, need, have, missing, subTree, -1);  // Default no slot
+        }
+        
+        public IngredientResult(String itemId, int need, int have, int missing, EvaluatedTree subTree, int targetSlot) {
             this.itemId = itemId;
             this.need = need;
             this.have = have;
             this.missing = missing;
             this.subTree = subTree;
+            this.targetSlot = targetSlot;
         }
         
         public String getItemId() { return itemId; }
+        public int getNeed() { return need; }
+        public int getHave() { return have; }
         public int getMissing() { return missing; }
         public boolean hasSubTree() { return subTree != null; }
         public EvaluatedTree getSubTree() { return subTree; }
+        public int getTargetSlot() { return targetSlot; }
         
         /**
          * Merge with another result for the same item.

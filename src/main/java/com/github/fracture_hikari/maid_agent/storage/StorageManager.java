@@ -75,9 +75,9 @@ public class StorageManager {
      * Check if the given position is a valid storage target.
      * Returns a StorageTarget if valid, or empty if not.
      */
-    public Optional<StorageTarget> isValidTarget(ServerLevel level, BlockPos pos, @Nullable Direction side) {
+    public Optional<WorkBlockTarget> isValidTarget(ServerLevel level, BlockPos pos, @Nullable Direction side) {
         return findHandler(level, pos, side)
-                .map(handler -> new StorageTarget(handler.getType(), pos, side));
+                .map(handler -> new WorkBlockTarget(handler.getType(), pos, side));
     }
 
     /**

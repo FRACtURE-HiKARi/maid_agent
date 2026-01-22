@@ -1,8 +1,8 @@
 package com.github.fracture_hikari.maid_agent.util;
 
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
-import com.github.fracture_hikari.maid_agent.storage.memory.PendingTask;
-import com.github.fracture_hikari.maid_agent.storage.memory.TaskQueue;
+import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.init.InitEntities;
 import net.minecraft.core.BlockPos;

@@ -6,14 +6,18 @@ import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.param
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.Parameter;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.mojang.serialization.Codec;
-import com.github.fracture_hikari.maid_agent.storage.memory.PendingTask;
-import com.github.fracture_hikari.maid_agent.storage.memory.TaskQueue;
+import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
+import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.ProcessingJob;
+import com.github.fracture_hikari.maid_agent.maid.memory.ProcessingMemory;
+import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
 import com.github.fracture_hikari.maid_agent.util.TaskQueueHelper;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
- * LLM function to query the current task queue status.
+ * LLM function to query the current task queue and processing jobs status.
  * Allows player to ask about progress of ongoing tasks.
  */
 public class GetTaskQueueFunction implements IFunctionCall<GetTaskQueueFunction.Params> {
@@ -47,44 +51,72 @@ public class GetTaskQueueFunction implements IFunctionCall<GetTaskQueueFunction.
 
     @Override
     public ToolResponse onToolCall(Params params, EntityMaid maid) {
+        StringBuilder sb = new StringBuilder();
+        boolean hasContent = false;
+        
+        // Task Queue section
         Optional<TaskQueue> queueOpt = TaskQueueHelper.getQueue(maid);
         
-        if (queueOpt.isEmpty() || queueOpt.get().isEmpty()) {
-            // Check if there are completed results to report
-            if (queueOpt.isPresent() && queueOpt.get().getCompletedCount() > 0) {
-                return new ToolResponse("All tasks completed.\n" + queueOpt.get().getBatchSummary());
+        if (queueOpt.isPresent() && !queueOpt.get().isEmpty()) {
+            TaskQueue queue = queueOpt.get();
+            hasContent = true;
+            
+            sb.append("## Task Queue\n");
+            
+            // Current task
+            PendingTask current = queue.peek();
+            if (current != null) {
+                sb.append(String.format("Current: %s %s (status: %s)\n",
+                        current.getType().name().toLowerCase(),
+                        current.getItemId().replace("minecraft:", ""),
+                        current.getStatus().name().toLowerCase()));
             }
-            return new ToolResponse("No tasks in queue. The maid is idle.");
+            
+            // Queue size
+            int pending = queue.size() - 1; // Exclude current
+            if (pending > 0) {
+                sb.append(String.format("Pending: %d more task(s)\n", pending));
+            }
+            
+            // Completed
+            int completed = queue.getCompletedCount();
+            if (completed > 0) {
+                sb.append(String.format("Completed: %d task(s)\n", completed));
+            }
+        } else if (queueOpt.isPresent() && queueOpt.get().getCompletedCount() > 0) {
+            // Show batch summary if tasks completed but queue empty
+            hasContent = true;
+            sb.append(queueOpt.get().getBatchSummary()).append("\n");
         }
         
-        TaskQueue queue = queueOpt.get();
-        StringBuilder sb = new StringBuilder();
+        // Processing Jobs section
+        Optional<ProcessingMemory> memoryOpt = maid.getBrain()
+                .getMemory(MemoryModuleRegistry.PROCESSING_JOBS.get());
         
-        // Current task
-        PendingTask current = queue.peek();
-        if (current != null) {
-            sb.append(String.format("Current task: %s %s (status: %s)\n",
-                    current.getType().name().toLowerCase(),
-                    current.getItemId().replace("minecraft:", ""),
-                    current.getStatus().name().toLowerCase()));
+        if (memoryOpt.isPresent()) {
+            ProcessingMemory memory = memoryOpt.get();
+            
+            List<ProcessingJob> activeJobs = memory.getActiveJobs();
+            
+            if (!activeJobs.isEmpty()) {
+                hasContent = true;
+                
+                if (sb.length() > 0) sb.append("\n");
+                sb.append("## Processing Jobs\n");
+                
+                for (ProcessingJob job : activeJobs) {
+                    sb.append(String.format("PENDING: %s at %s - Waiting for output / collection\n",
+                            job.getExpectedOutput().getItem().getDescription().getString(),
+                            job.getOutputEndpoint().toShortString()));
+                }
+            }
         }
         
-        // Queue size
-        int pending = queue.size() - 1; // Exclude current
-        if (pending > 0) {
-            sb.append(String.format("Pending: %d more task(s) in queue\n", pending));
+        if (!hasContent) {
+            return new ToolResponse("No tasks or processing jobs. The maid is idle.");
         }
         
-        // Completed count in this batch
-        int completed = queue.getCompletedCount();
-        if (completed > 0) {
-            sb.append(String.format("Completed: %d task(s) so far\n", completed));
-        }
-        
-        // Total in batch
-        sb.append(String.format("Total batch: %d task(s)", queue.getTotalTasksInBatch()));
-        
-        return new ToolResponse(sb.toString());
+        return new ToolResponse(sb.toString().trim());
     }
 
     public record Params() {}

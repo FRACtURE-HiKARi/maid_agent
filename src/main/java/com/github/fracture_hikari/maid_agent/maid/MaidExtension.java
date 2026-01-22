@@ -48,7 +48,8 @@ public class MaidExtension implements ILittleMaid {
         register.register(new GetInventoryFunction());
         register.register(new GetNearbyStorageFunction());
         register.register(new GetTaskQueueFunction());
-        register.register(new GetFuelSourcesFunction());
+        //register.register(new GetFuelSourcesFunction());
+        register.register(new ClearTasksFunction());
     }
 
     @Override
@@ -60,7 +61,8 @@ public class MaidExtension implements ILittleMaid {
                 // Behaviors that USE these memories are registered in AgentTask
                 return List.of(
                         MemoryModuleRegistry.TASK_QUEUE.get(),
-                        MemoryModuleRegistry.VIEWED_STORAGE.get()
+                        MemoryModuleRegistry.VIEWED_STORAGE.get(),
+                        MemoryModuleRegistry.PROCESSING_JOBS.get()
                 );
             }
             

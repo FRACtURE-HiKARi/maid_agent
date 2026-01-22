@@ -1,9 +1,12 @@
-package com.github.fracture_hikari.maid_agent.storage.memory;
+package com.github.fracture_hikari.maid_agent.maid.memory;
 
 import com.github.fracture_hikari.maid_agent.ai.AIChatCallback;
-import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
+import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
+import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Optional;
 
 /**
  * Represents a pending task for the maid to execute.
@@ -14,7 +17,8 @@ public class PendingTask {
     public enum TaskType {
         FETCH,   // Get items from storage
         STORE,   // Put items into storage
-        CRAFT    // Craft items at workstation
+        CRAFT,   // Craft items at workstation (instant)
+        PROCESS  // Two-phase: insert ingredients → wait → collect output
     }
 
     public enum TaskStatus {
@@ -36,7 +40,7 @@ public class PendingTask {
     private final String itemId;
     private final int count;
     @Nullable
-    private StorageTarget target;
+    private WorkBlockTarget target;
     private TaskStatus status;
     @Nullable
     private String resultMessage;
@@ -48,12 +52,14 @@ public class PendingTask {
     private String recipeId;  // For CRAFT tasks - main recipe
     @Nullable
     private java.util.LinkedHashMap<String, Integer> craftingSteps;  // Ordered recipe ID -> craft count (sub-recipes first)
+    @Nullable
+    private java.util.List<SlotMapping> slotMappings;  // Slot mappings for PROCESS tasks
 
     public PendingTask(EntityMaid maid, TaskType type, String itemId, int count) {
         this(maid, type, itemId, count, null);
     }
 
-    public PendingTask(EntityMaid maid, TaskType type, String itemId, int count, @Nullable StorageTarget target) {
+    public PendingTask(EntityMaid maid, TaskType type, String itemId, int count, @Nullable WorkBlockTarget target) {
         this.type = type;
         this.itemId = itemId;
         this.count = count;
@@ -65,11 +71,9 @@ public class PendingTask {
         this.workstationType = null;
         this.recipeId = null;
         this.craftingSteps = null;
+        this.slotMappings = null;
     }
 
-    public void notifyComplete() {
-        this.callback.notifyTaskComplete(resultMessage);
-    }
     public TaskType getType() {
         return type;
     }
@@ -83,11 +87,11 @@ public class PendingTask {
     }
 
     @Nullable
-    public StorageTarget getTarget() {
+    public WorkBlockTarget getTarget() {
         return target;
     }
 
-    public void setTarget(@Nullable StorageTarget target) {
+    public void setTarget(@Nullable WorkBlockTarget target) {
         this.target = target;
     }
 
@@ -157,10 +161,24 @@ public class PendingTask {
     public void setCraftingSteps(@Nullable java.util.LinkedHashMap<String, Integer> craftingSteps) {
         this.craftingSteps = craftingSteps;
     }
+    
+    @Nullable
+    public java.util.List<SlotMapping> getSlotMappings() {
+        return slotMappings;
+    }
+    
+    public void setSlotMappings(@Nullable java.util.List<SlotMapping> slotMappings) {
+        this.slotMappings = slotMappings;
+    }
 
     @Override
     public String toString() {
         return String.format("PendingTask{type=%s, item=%s, count=%d, status=%s}",
                 type, itemId, count, status);
+    }
+
+    public static Optional<PendingTask> maidPeekTask(EntityMaid maid) {
+        Optional<TaskQueue> queueOpt = maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get());
+        return queueOpt.map(TaskQueue::peek);
     }
 }

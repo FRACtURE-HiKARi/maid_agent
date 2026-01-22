@@ -1,6 +1,6 @@
-package com.github.fracture_hikari.maid_agent.storage.memory;
+package com.github.fracture_hikari.maid_agent.maid.memory;
 
-import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
+import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.*;
@@ -21,13 +21,13 @@ public class ViewedStorageMemory {
     }
 
     // Map from storage target to list of items found there
-    private final Map<StorageTarget, List<ItemCount>> storageContents = new HashMap<>();
+    private final Map<WorkBlockTarget, List<ItemCount>> storageContents = new HashMap<>();
     
     // Positions we've already visited during this exploration session
-    private final Set<StorageTarget> visitedPositions = new HashSet<>();
+    private final Set<WorkBlockTarget> visitedPositions = new HashSet<>();
     
     // Ordered list of storages for LLM indexed access
-    private final List<StorageTarget> indexedStorages = new ArrayList<>();
+    private final List<WorkBlockTarget> indexedStorages = new ArrayList<>();
     
     // Timestamp of last update (game time in ticks)
     private long lastUpdated = 0;
@@ -61,7 +61,7 @@ public class ViewedStorageMemory {
     /**
      * Record items found at a storage location.
      */
-    public void setContents(StorageTarget target, List<ItemStack> items) {
+    public void setContents(WorkBlockTarget target, List<ItemStack> items) {
         List<ItemCount> counts = new ArrayList<>();
         for (ItemStack stack : items) {
             if (!stack.isEmpty()) {
@@ -87,23 +87,23 @@ public class ViewedStorageMemory {
     /**
      * Get cached contents of a storage location.
      */
-    public List<ItemCount> getContents(StorageTarget target) {
+    public List<ItemCount> getContents(WorkBlockTarget target) {
         return storageContents.getOrDefault(target, Collections.emptyList());
     }
 
     /**
      * Get all known storage locations.
      */
-    public Set<StorageTarget> getKnownStorages() {
+    public Set<WorkBlockTarget> getKnownStorages() {
         return new HashSet<>(storageContents.keySet());
     }
 
     /**
      * Find storage locations that contain a specific item.
      */
-    public List<StorageTarget> findStoragesWithItem(ItemStack target) {
-        List<StorageTarget> result = new ArrayList<>();
-        for (Map.Entry<StorageTarget, List<ItemCount>> entry : storageContents.entrySet()) {
+    public List<WorkBlockTarget> findStoragesWithItem(ItemStack target) {
+        List<WorkBlockTarget> result = new ArrayList<>();
+        for (Map.Entry<WorkBlockTarget, List<ItemCount>> entry : storageContents.entrySet()) {
             for (ItemCount ic : entry.getValue()) {
                 if (ItemStack.isSameItemSameTags(ic.item(), target) && ic.count() > 0) {
                     result.add(entry.getKey());
@@ -132,7 +132,7 @@ public class ViewedStorageMemory {
     /**
      * Update cached count after extracting items.
      */
-    public void recordExtraction(StorageTarget target, ItemStack item, int count) {
+    public void recordExtraction(WorkBlockTarget target, ItemStack item, int count) {
         List<ItemCount> counts = storageContents.get(target);
         if (counts == null) return;
         
@@ -152,7 +152,7 @@ public class ViewedStorageMemory {
     /**
      * Update cached count after inserting items.
      */
-    public void recordInsertion(StorageTarget target, ItemStack item, int count) {
+    public void recordInsertion(WorkBlockTarget target, ItemStack item, int count) {
         List<ItemCount> counts = storageContents.computeIfAbsent(target, k -> new ArrayList<>());
         
         for (int i = 0; i < counts.size(); i++) {
@@ -167,14 +167,14 @@ public class ViewedStorageMemory {
     /**
      * Check if we've visited a storage location.
      */
-    public boolean hasVisited(StorageTarget target) {
+    public boolean hasVisited(WorkBlockTarget target) {
         return visitedPositions.contains(target);
     }
 
     /**
      * Mark a position as visited.
      */
-    public void markVisited(StorageTarget target) {
+    public void markVisited(WorkBlockTarget target) {
         visitedPositions.add(target);
     }
 
@@ -188,7 +188,7 @@ public class ViewedStorageMemory {
     /**
      * Remove a storage from memory (e.g., if block was destroyed).
      */
-    public void removeStorage(StorageTarget target) {
+    public void removeStorage(WorkBlockTarget target) {
         storageContents.remove(target);
         visitedPositions.remove(target);
     }
@@ -213,7 +213,7 @@ public class ViewedStorageMemory {
     /**
      * Add a storage to the indexed list.
      */
-    public void addStorage(StorageTarget target, List<net.minecraft.world.item.ItemStack> contents) {
+    public void addStorage(WorkBlockTarget target, List<net.minecraft.world.item.ItemStack> contents) {
         indexedStorages.add(target);
         setContents(target, contents);
     }
@@ -221,7 +221,7 @@ public class ViewedStorageMemory {
     /**
      * Get storage by index (from get_nearby_storage result).
      */
-    public Optional<StorageTarget> getStorageByIndex(int index) {
+    public Optional<WorkBlockTarget> getStorageByIndex(int index) {
         if (index >= 0 && index < indexedStorages.size()) {
             return Optional.of(indexedStorages.get(index));
         }

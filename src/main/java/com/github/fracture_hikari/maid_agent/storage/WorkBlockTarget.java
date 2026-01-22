@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
@@ -13,23 +14,23 @@ import java.util.Optional;
  * Represents a storage block location with type, position, and optional access direction.
  * Similar to maid_storage_manager's Target class.
  */
-public class StorageTarget {
+public class WorkBlockTarget {
     private final ResourceLocation type;
     private final BlockPos pos;
     @Nullable
     private final Direction side;
 
-    public StorageTarget(ResourceLocation type, BlockPos pos) {
+    public WorkBlockTarget(ResourceLocation type, BlockPos pos) {
         this(type, pos, (Direction) null);
     }
 
-    public StorageTarget(ResourceLocation type, BlockPos pos, @Nullable Direction side) {
+    public WorkBlockTarget(ResourceLocation type, @NotNull BlockPos pos, @Nullable Direction side) {
         this.type = type;
         this.pos = pos;
         this.side = side;
     }
     
-    public StorageTarget(ResourceLocation type, BlockPos pos, Optional<Direction> side) {
+    public WorkBlockTarget(ResourceLocation type, BlockPos pos, Optional<Direction> side) {
         this(type, pos, side.orElse(null));
     }
 
@@ -37,6 +38,7 @@ public class StorageTarget {
         return type;
     }
 
+    @NotNull
     public BlockPos getPos() {
         return pos;
     }
@@ -53,8 +55,8 @@ public class StorageTarget {
     /**
      * Create a new target with the same type but different position/side.
      */
-    public StorageTarget withPos(BlockPos newPos, @Nullable Direction newSide) {
-        return new StorageTarget(type, newPos, newSide);
+    public WorkBlockTarget withPos(BlockPos newPos, @Nullable Direction newSide) {
+        return new WorkBlockTarget(type, newPos, newSide);
     }
 
     public CompoundTag toNbt() {
@@ -67,18 +69,18 @@ public class StorageTarget {
         return nbt;
     }
 
-    public static StorageTarget fromNbt(CompoundTag nbt) {
+    public static WorkBlockTarget fromNbt(CompoundTag nbt) {
         ResourceLocation type = ResourceLocation.parse(nbt.getString("type"));
         BlockPos pos = BlockPos.of(nbt.getLong("pos"));
         Direction side = nbt.contains("side") ? Direction.byName(nbt.getString("side")) : null;
-        return new StorageTarget(type, pos, side);
+        return new WorkBlockTarget(type, pos, side);
     }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        StorageTarget that = (StorageTarget) o;
+        WorkBlockTarget that = (WorkBlockTarget) o;
         return Objects.equals(type, that.type) &&
                Objects.equals(pos, that.pos) &&
                side == that.side;

@@ -12,10 +12,10 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
-import com.github.fracture_hikari.maid_agent.storage.StorageTarget;
-import com.github.fracture_hikari.maid_agent.storage.memory.PendingTask;
-import com.github.fracture_hikari.maid_agent.storage.memory.TaskQueue;
-import com.github.fracture_hikari.maid_agent.storage.memory.ViewedStorageMemory;
+import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
+import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
+import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
 import com.github.fracture_hikari.maid_agent.util.TaskQueueHelper;
 
 import java.util.List;
@@ -159,13 +159,13 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
             }
             
             // Validate storage index
-            Optional<StorageTarget> targetOpt = memory.getStorageByIndex(op.storageIndex());
+            Optional<WorkBlockTarget> targetOpt = memory.getStorageByIndex(op.storageIndex());
             if (targetOpt.isEmpty()) {
                 response.append(String.format("Skipped operation %d: invalid storage_index %d. ", i + 1, op.storageIndex()));
                 continue;
             }
             
-            StorageTarget target = targetOpt.get();
+            WorkBlockTarget target = targetOpt.get();
             
             // Check for similar task already in queue (warn but allow - could be multiple stacks)
             if (taskQueue.hasSimilarTask(taskType, op.itemId(), op.storageIndex())) {

@@ -14,27 +14,26 @@ import com.github.fracture_hikari.maid_agent.config.JeiConfig;
 import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.runtime.IIngredientFilter;
 import mezz.jei.api.runtime.IJeiRuntime;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * LLM function to search for items by keyword using JEI's ingredient filter.
- * Returns matching items with their namespace:name identifiers.
+ * LLM function to search for items by keyword.
+ * Uses JEI when available, falls back to vanilla registry scan otherwise.
  */
 public class ItemSearchFunction implements IFunctionCall<ItemSearchFunction.Result> {
-    private static final String FUNCTION_ID = "jei_item_search";
+    private static final String FUNCTION_ID = "item_search";
     private static final String FUNCTION_DESC = """
             Search for items by keyword. Returns a list of matching items with their resource locations.
             Use this to find items when you know part of the name but not the exact item ID.""";
     private static final String KEYWORD_PARAM_ID = "keyword";
     private static final String KEYWORD_PARAM_DESC = """
             keyword (string, required): The search term to find items. 
-            Supports JEI search syntax: plain text for name search, @modname for mod search, 
-            #tagname for tag search, $tooltip for tooltip search.""";
+            Searches item names and IDs. With JEI: supports @modname, #tagname, $tooltip syntax.""";
 
-    private static final String JEI_UNAVAILABLE = "JEI is not available. Cannot search for items.";
     private static final String NO_RESULTS = "No items found matching '%s'";
     private static final String SUCCESS = "Found %d item(s) matching '%s':\n%s";
 
@@ -66,19 +65,23 @@ public class ItemSearchFunction implements IFunctionCall<ItemSearchFunction.Resu
 
     @Override
     public ToolResponse onToolCall(Result result, EntityMaid maid) {
-        if (!JeiRuntimeHolder.isAvailable()) {
-            return new ToolResponse(JEI_UNAVAILABLE);
-        }
-
-        IJeiRuntime runtime = JeiRuntimeHolder.getRuntime().orElse(null);
-        if (runtime == null) {
-            return new ToolResponse(JEI_UNAVAILABLE);
-        }
-
+        int maxResults = JeiConfig.ITEM_SEARCH_MAX_RESULTS.get();
         String keyword = result.keyword.toLowerCase();
-        IIngredientFilter filter = runtime.getIngredientFilter();
         
-        // Save current filter text to restore later
+        // Try JEI first, fall back to vanilla
+        if (JeiRuntimeHolder.isAvailable()) {
+            IJeiRuntime runtime = JeiRuntimeHolder.getRuntime().orElse(null);
+            if (runtime != null) {
+                return searchWithJei(runtime, keyword, maxResults);
+            }
+        }
+        
+        // Vanilla fallback
+        return searchVanillaRegistry(keyword, maxResults);
+    }
+    
+    private ToolResponse searchWithJei(IJeiRuntime runtime, String keyword, int maxResults) {
+        IIngredientFilter filter = runtime.getIngredientFilter();
         String originalFilter = filter.getFilterText();
         
         try {
@@ -86,10 +89,9 @@ public class ItemSearchFunction implements IFunctionCall<ItemSearchFunction.Resu
             List<ItemStack> filteredItems = filter.getFilteredIngredients(VanillaTypes.ITEM_STACK);
             
             if (filteredItems.isEmpty()) {
-                return new ToolResponse(NO_RESULTS.formatted(result.keyword));
+                return new ToolResponse(NO_RESULTS.formatted(keyword));
             }
 
-            int maxResults = JeiConfig.ITEM_SEARCH_MAX_RESULTS.get();
             List<String> itemInfos = filteredItems.stream()
                     .limit(maxResults)
                     .map(this::formatItemInfo)
@@ -103,12 +105,30 @@ public class ItemSearchFunction implements IFunctionCall<ItemSearchFunction.Resu
             
             return new ToolResponse(SUCCESS.formatted(
                     Math.min(totalFound, maxResults), 
-                    result.keyword, 
+                    keyword, 
                     resultText + suffix));
         } finally {
-            // Restore original filter
             filter.setFilterText(originalFilter);
         }
+    }
+    
+    private ToolResponse searchVanillaRegistry(String keyword, int maxResults) {
+        List<String> matches = BuiltInRegistries.ITEM.stream()
+                .map(ItemStack::new)
+                .filter(stack -> {
+                    String name = stack.getHoverName().getString().toLowerCase();
+                    String id = ItemIdUtils.getId(stack).toLowerCase();
+                    return name.contains(keyword) || id.contains(keyword);
+                })
+                .limit(maxResults)
+                .map(this::formatItemInfo)
+                .toList();
+        
+        if (matches.isEmpty()) {
+            return new ToolResponse(NO_RESULTS.formatted(keyword));
+        }
+        
+        return new ToolResponse(SUCCESS.formatted(matches.size(), keyword, String.join("\n", matches)));
     }
 
     private String formatItemInfo(ItemStack stack) {
@@ -120,3 +140,4 @@ public class ItemSearchFunction implements IFunctionCall<ItemSearchFunction.Resu
     public record Result(String keyword) {
     }
 }
+

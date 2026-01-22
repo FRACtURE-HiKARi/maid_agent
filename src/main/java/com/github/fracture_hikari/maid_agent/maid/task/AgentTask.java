@@ -5,7 +5,11 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.init.InitSounds;
 import com.mojang.datafixers.util.Pair;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
-import com.github.fracture_hikari.maid_agent.maid.behavior.StorageMoveTask;
+import com.github.fracture_hikari.maid_agent.maid.behavior.CollectProcessingTask;
+import com.github.fracture_hikari.maid_agent.maid.behavior.CraftingWorkTask;
+import com.github.fracture_hikari.maid_agent.maid.behavior.InsertProcessingTask;
+import com.github.fracture_hikari.maid_agent.maid.behavior.ProcessingMoveTask;
+import com.github.fracture_hikari.maid_agent.maid.behavior.WorkBlockMoveTask;
 import com.github.fracture_hikari.maid_agent.maid.behavior.StorageWorkTask;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
@@ -19,20 +23,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Maid "Agent" task - enables LLM-controlled storage operations.
+ * Maid "Agent" task - enables LLM-controlled storage and crafting operations.
  * 
- * When this task is selected for a maid, she can execute storage commands
- * from the LLM (via chat). The behaviors registered here consume memories
- * set by our LLM functions (StorageItemsFunction, GetNearbyStorageFunction).
- * 
- * Memory flow:
- * - StorageItemsFunction → sets TASK_QUEUE memory
- * - StorageMoveTask → reads TASK_QUEUE, moves maid to storage
- * - StorageWorkTask → reads TASK_QUEUE, executes fetch/store, triggers LLM callback
+ * Behaviors:
+ * - StorageMoveTask: move to target location from TASK_QUEUE
+ * - StorageWorkTask: FETCH/STORE operations
+ * - CraftingWorkTask: CRAFT at crafting table
+ * - InsertProcessingTask: PROCESS phase 1 - insert to furnace
+ * - CollectProcessingTask: PROCESS phase 2 - collect from furnace
  */
 public class AgentTask implements IMaidTask {
 
-    // Unique identifier for this task
     public static final ResourceLocation TASK_ID = ResourceLocation.fromNamespaceAndPath(MaidAgent.MODID, "agent");
 
     @Override
@@ -40,43 +41,32 @@ public class AgentTask implements IMaidTask {
         return TASK_ID;
     }
 
-    /**
-     * Icon shown in the task selection GUI.
-     * Using Ender Eye to represent "AI/Agent" capability.
-     */
     @Override
     public @NotNull ItemStack getIcon() {
         return Items.ENDER_EYE.getDefaultInstance();
     }
 
-    /**
-     * Ambient sound played while maid is in this task.
-     */
     @Nullable
     @Override
     public SoundEvent getAmbientSound(@NotNull EntityMaid maid) {
         return InitSounds.MAID_IDLE.get();
     }
 
-    /**
-     * Create the AI behaviors for this task.
-     * 
-     * These behaviors run ONLY when the maid's task is set to "Agent".
-     * They consume memories set by our LLM functions.
-     * 
-     * @param maid The maid entity
-     * @return List of behaviors for storage operations
-     */
     @Override
     public @NotNull List<Pair<Integer, BehaviorControl<? super EntityMaid>>> createBrainTasks(EntityMaid maid) {
         List<Pair<Integer, BehaviorControl<? super EntityMaid>>> behaviors = new ArrayList<>();
         
-        // Priority 5 = runs after core behaviors but before random walk
-        // StorageMoveTask: finds and walks to storage when TASK_QUEUE has pending tasks
-        behaviors.add(Pair.of(5, new StorageMoveTask()));
+        // Movement behavior for TaskQueue (priority 5 - higher)
+        behaviors.add(Pair.of(5, new WorkBlockMoveTask()));  // Handles FETCH/STORE/CRAFT/PROCESS movement
         
-        // StorageWorkTask: executes fetch/store when arrived at storage
-        behaviors.add(Pair.of(5, new StorageWorkTask()));
+        // Work behaviors (priority 5 - each handles specific task types when arrived)
+        behaviors.add(Pair.of(5, new StorageWorkTask()));       // FETCH/STORE operations
+        behaviors.add(Pair.of(5, new CraftingWorkTask()));      // CRAFT at crafting table
+        behaviors.add(Pair.of(5, new InsertProcessingTask()));  // PROCESS insert phase
+        
+        // Processing collection behaviors (priority 6 - lower, runs when not busy)
+        behaviors.add(Pair.of(10, new ProcessingMoveTask()));    // Movement to collect outputs
+        behaviors.add(Pair.of(5, new CollectProcessingTask())); // PROCESS collect phase
         
         return behaviors;
     }

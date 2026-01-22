@@ -1,7 +1,7 @@
 package com.github.fracture_hikari.maid_agent.util;
 
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
-import com.github.fracture_hikari.maid_agent.storage.memory.ViewedStorageMemory;
+import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
