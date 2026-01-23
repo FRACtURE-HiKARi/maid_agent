@@ -1,16 +1,12 @@
 package com.github.fracture_hikari.maid_agent.maid.task;
 
+import com.github.fracture_hikari.maid_agent.maid.behavior.*;
 import com.github.tartaricacid.touhoulittlemaid.api.task.IMaidTask;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.init.InitSounds;
 import com.mojang.datafixers.util.Pair;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
-import com.github.fracture_hikari.maid_agent.maid.behavior.CollectProcessingTask;
-import com.github.fracture_hikari.maid_agent.maid.behavior.CraftingWorkTask;
-import com.github.fracture_hikari.maid_agent.maid.behavior.InsertProcessingTask;
-import com.github.fracture_hikari.maid_agent.maid.behavior.ProcessingMoveTask;
-import com.github.fracture_hikari.maid_agent.maid.behavior.WorkBlockMoveTask;
-import com.github.fracture_hikari.maid_agent.maid.behavior.StorageWorkTask;
+import com.github.fracture_hikari.maid_agent.maid.behavior.CollectMoveTask;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.entity.ai.behavior.BehaviorControl;
@@ -62,12 +58,10 @@ public class AgentTask implements IMaidTask {
         // Work behaviors (priority 5 - each handles specific task types when arrived)
         behaviors.add(Pair.of(5, new StorageWorkTask()));       // FETCH/STORE operations
         behaviors.add(Pair.of(5, new CraftingWorkTask()));      // CRAFT at crafting table
-        behaviors.add(Pair.of(5, new InsertProcessingTask()));  // PROCESS insert phase
-        
-        // Processing collection behaviors (priority 6 - lower, runs when not busy)
-        behaviors.add(Pair.of(10, new ProcessingMoveTask()));    // Movement to collect outputs
-        behaviors.add(Pair.of(5, new CollectProcessingTask())); // PROCESS collect phase
-        
+        behaviors.add(Pair.of(5, new InsertWorkTask()));  // PROCESS insert phase
+
+        behaviors.add(Pair.of(10, new CollectMoveTask())); // PROCESS collect phase
+        behaviors.add(Pair.of(5, new CollectWorkTask()));
         return behaviors;
     }
 

@@ -1,5 +1,7 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
+import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
+import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
@@ -19,9 +21,17 @@ import java.util.Optional;
  */
 public class WorkBlockMoveTask extends AbstractMoveTask {
 
+    protected PendingTask currentMove;
     public WorkBlockMoveTask() {
-        super();
-        this.setMaxCheckRate(20);
+        super(20);
+    }
+
+    @Override
+    protected boolean shouldMoveTo(ServerLevel level, EntityMaid maid, BlockPos pos) {
+        Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
+        if (taskOpt.isEmpty()) return false;
+        Optional<WorkBlockTarget> target = taskOpt.get().getTarget();
+        return target.isPresent() && pos.equals(target.get().getPos());
     }
 
     @Override
@@ -29,13 +39,12 @@ public class WorkBlockMoveTask extends AbstractMoveTask {
         if (!super.checkExtraStartConditions(level, maid))
             return false;
 
-        if (currentMove.getType() == PendingTask.TaskType.PROCESS) {
-            return false;
-        }
+        Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
+        if (taskOpt.isEmpty()) return false;
+        currentMove = taskOpt.get();
 
-        // For CRAFT and PROCESS tasks, target is already set by CraftItemFunction
-        // For FETCH/STORE, we may need to search for storage
-        BlockPos pos = currentMove.getTarget().getPos();
+        if (currentMove.getTarget().isEmpty()) return false;
+        BlockPos pos = currentMove.getTarget().get().getPos();
         MaidAgent.LOGGER.info("TaskMoveTask: Setting up movement for {} to {}", currentMove.getType(), pos);
         return true;
     }
@@ -43,10 +52,11 @@ public class WorkBlockMoveTask extends AbstractMoveTask {
     @Override
     protected void start(ServerLevel level, EntityMaid maid, long gameTime) {
         super.start(level, maid, gameTime);
-        Optional<PendingTask> taskOpt = PendingTask.maidPeekTask(maid);
+        Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
+        this.searchForDestination(level, maid);
         taskOpt.ifPresent(task -> {
-            if (task.getTarget() != null) {
-                MaidAgent.LOGGER.info("StorageMoveTask: move to storage at {}", task.getTarget().getPos());
+            if (task.getTarget().isPresent()) {
+                MaidAgent.LOGGER.info("StorageMoveTask: move to storage at {}", task.getTarget().get().getPos());
             } else {
                 MaidAgent.LOGGER.info("StorageMoveTask: task target is null type={}", task.getType());
             }

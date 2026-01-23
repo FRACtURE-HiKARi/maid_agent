@@ -15,19 +15,14 @@ import java.util.UUID;
  * Supports multiple LLM function calls executed sequentially.
  * Notifies LLM only after entire batch completes.
  */
-public class TaskQueue {
+public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.TaskResult> {
     
     private final Queue<PendingTask> tasks = new ArrayDeque<>();
-    private final List<TaskResult> completedResults = new ArrayList<>();
-    private final String batchId;
-    private int totalTasksInBatch = 0;
     private EntityMaid maid;
-    private AIChatCallback callback;
     
     public TaskQueue(EntityMaid maid) {
+        super(maid);
         this.maid = maid;
-        this.batchId = UUID.randomUUID().toString().substring(0, 8);
-        this.callback = new AIChatCallback(maid);
     }
     
     /**
@@ -36,7 +31,6 @@ public class TaskQueue {
      */
     public int enqueue(PendingTask task) {
         tasks.add(task);
-        totalTasksInBatch++;
         return tasks.size();
     }
     
@@ -67,8 +61,7 @@ public class TaskQueue {
      */
     public void clear() {
         tasks.clear();
-        completedResults.clear();
-        totalTasksInBatch = 0;
+        super.clear();
     }
     
     /**
@@ -79,8 +72,8 @@ public class TaskQueue {
         for (PendingTask task : tasks) {
             if (task.getType() == type && 
                 task.getItemId().equals(itemId) &&
-                task.getTarget() != null &&
-                task.getTarget().getPos().equals(getStoragePosForIndex(storageIndex))) {
+                task.getTarget().isPresent() &&
+                task.getTarget().get().getPos().equals(getStoragePosForIndex(storageIndex))) {
                 return true;
             }
         }
@@ -163,38 +156,8 @@ public class TaskQueue {
         return sb.toString().trim();
     }
     
-    /**
-     * Notify LLM with batch summary.
-     * Only notifies if there are no active processing jobs pending.
-     */
-    public void notifyBatchComplete() {
-        
-        var brain = maid.getBrain();
-        var processingMemOpt = brain.getMemory(com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry.PROCESSING_JOBS.get());
-        
-        if (processingMemOpt.isPresent() && processingMemOpt.get().hasActiveJobs()) {
-            // Process jobs still running - defer notification
-            return;
-        }
-        
-        String summary = getBatchSummary();
-        callback.notifyTaskComplete(summary);
-    }
-    
-    /**
-     * Get the batch ID.
-     */
-    public String getBatchId() {
-        return batchId;
-    }
-    
-    /**
-     * Get total tasks that were in this batch.
-     */
-    public int getTotalTasksInBatch() {
-        return totalTasksInBatch;
-    }
-    
+
+
     /**
      * Get count of completed results.
      */

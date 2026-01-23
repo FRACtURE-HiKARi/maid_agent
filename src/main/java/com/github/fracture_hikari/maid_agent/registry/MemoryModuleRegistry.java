@@ -1,7 +1,7 @@
 package com.github.fracture_hikari.maid_agent.registry;
 
 import com.github.fracture_hikari.maid_agent.MaidAgent;
-import com.github.fracture_hikari.maid_agent.maid.memory.ProcessingMemory;
+import com.github.fracture_hikari.maid_agent.maid.memory.JobMemory;
 import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
 import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
@@ -42,7 +42,7 @@ public class MemoryModuleRegistry {
      * Tracks active processing jobs (furnace, industrial machines).
      * Used by InsertProcessingTask and CollectProcessingTask behaviors.
      */
-    public static final RegistryObject<MemoryModuleType<ProcessingMemory>> PROCESSING_JOBS =
+    public static final RegistryObject<MemoryModuleType<JobMemory>> PROCESSING_JOBS =
             MEMORY_MODULES.register("processing_jobs",
                     () -> new MemoryModuleType<>(Optional.empty()));
 

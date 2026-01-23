@@ -1,7 +1,5 @@
 package com.github.fracture_hikari.maid_agent.maid.memory;
 
-import com.github.fracture_hikari.maid_agent.ai.AIChatCallback;
-import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import org.jetbrains.annotations.Nullable;
@@ -41,11 +39,7 @@ public class PendingTask {
     private final int count;
     @Nullable
     private WorkBlockTarget target;
-    private TaskStatus status;
-    @Nullable
-    private String resultMessage;
     private int actualCount; // Actual items fetched/stored/crafted
-    private AIChatCallback callback;
     @Nullable
     private WorkstationType workstationType;  // For CRAFT tasks
     @Nullable
@@ -64,10 +58,7 @@ public class PendingTask {
         this.itemId = itemId;
         this.count = count;
         this.target = target;
-        this.status = TaskStatus.PENDING;
-        this.resultMessage = null;
-        this.actualCount = 0;
-        this.callback = new AIChatCallback(maid); // TODO: replace this with proper client info.
+        this.actualCount = -1;
         this.workstationType = null;
         this.recipeId = null;
         this.craftingSteps = null;
@@ -86,53 +77,20 @@ public class PendingTask {
         return count;
     }
 
-    @Nullable
-    public WorkBlockTarget getTarget() {
-        return target;
+    public Optional<WorkBlockTarget> getTarget() {
+        return Optional.ofNullable(target);
     }
 
     public void setTarget(@Nullable WorkBlockTarget target) {
         this.target = target;
     }
 
-    public TaskStatus getStatus() {
-        return status;
-    }
-
-    public void setStatus(TaskStatus status) {
-        this.status = status;
-    }
-
-    @Nullable
-    public String getResultMessage() {
-        return resultMessage;
-    }
-
-    public void setResultMessage(@Nullable String resultMessage) {
-        this.resultMessage = resultMessage;
-    }
-
     public int getActualCount() {
         return actualCount;
     }
 
-    public void setActualCount(int actualCount) {
+    public void setActualAccount(int actualCount) {
         this.actualCount = actualCount;
-    }
-
-    public boolean isComplete() {
-        return status == TaskStatus.COMPLETED || status == TaskStatus.FAILED;
-    }
-
-    public void complete(String message, int actualCount) {
-        this.status = TaskStatus.COMPLETED;
-        this.resultMessage = message;
-        this.actualCount = actualCount;
-    }
-
-    public void fail(String message) {
-        this.status = TaskStatus.FAILED;
-        this.resultMessage = message;
     }
     
     @Nullable
@@ -173,12 +131,7 @@ public class PendingTask {
 
     @Override
     public String toString() {
-        return String.format("PendingTask{type=%s, item=%s, count=%d, status=%s}",
-                type, itemId, count, status);
-    }
-
-    public static Optional<PendingTask> maidPeekTask(EntityMaid maid) {
-        Optional<TaskQueue> queueOpt = maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get());
-        return queueOpt.map(TaskQueue::peek);
+        return String.format("PendingTask{type=%s, item=%s, count=%d, actual=%d}",
+                type, itemId, count, actualCount);
     }
 }

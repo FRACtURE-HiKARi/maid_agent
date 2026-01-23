@@ -1,12 +1,10 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
-import com.github.fracture_hikari.maid_agent.maid.memory.SlotMapping;
+import com.github.fracture_hikari.maid_agent.maid.memory.*;
+import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
+import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
-import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
-import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
-import com.github.fracture_hikari.maid_agent.maid.memory.ProcessingJob;
-import com.github.fracture_hikari.maid_agent.maid.memory.ProcessingMemory;
 import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -15,11 +13,14 @@ import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.items.IItemHandler;
 
+import java.util.List;
+import java.util.Optional;
+
 /**
  * Behavior for inserting ingredients into furnace/processing machines.
  * Phase 1 of PROCESS task: insert ingredients + fuel, then wait.
  */
-public class InsertProcessingTask extends AbstractWorkTask {
+public class InsertWorkTask extends AbstractWorkTask {
     
     // Furnace slot indices
     private static final int FURNACE_INPUT_SLOT = 0;
@@ -29,12 +30,17 @@ public class InsertProcessingTask extends AbstractWorkTask {
     // Approximate ticks per smelt (200 ticks = 10 seconds)
     private static final int TICKS_PER_SMELT = 200;
 
-    public InsertProcessingTask() {
+    public InsertWorkTask() {
         super();
     }
 
     @Override
-    protected boolean canHandle(PendingTask task) {
+    protected boolean checkExtraStartConditions(ServerLevel level, EntityMaid maid) {
+        if (!super.checkExtraStartConditions(level, maid)) return false;
+        Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
+        if (taskOpt.isEmpty()) return false;
+        PendingTask task = taskOpt.get();
+
         if (task.getType() != PendingTask.TaskType.PROCESS) {
             return false;
         }
@@ -45,24 +51,28 @@ public class InsertProcessingTask extends AbstractWorkTask {
     }
 
     @Override
-    protected String performWork(ServerLevel level, EntityMaid maid, PendingTask task) {
-        BlockPos machinePos = task.getTarget() != null ? task.getTarget().getPos() : null;
-        if (machinePos == null) {
-            task.fail("No target");
-            return "Failed to process: no furnace location";
+    protected void handle(ServerLevel level, EntityMaid maid) {
+        Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
+        if (taskOpt.isEmpty()) return;
+        PendingTask task = taskOpt.get();
+
+        Optional<WorkBlockTarget> targetOpt = task.getTarget();
+        if (targetOpt.isEmpty()) {
+            return;
         }
-        
+
+        BlockPos machinePos = targetOpt.get().getPos();
         BlockEntity be = level.getBlockEntity(machinePos);
         if (!(be instanceof AbstractFurnaceBlockEntity furnace)) {
-            task.fail("Not a furnace");
-            return "Failed to process: block is not a furnace";
+            MemoryUtil.updateTasks(maid, false, "Failed to process: block is not a furnace");
+            return;
         }
         
         // Get pre-evaluated slot mappings from task (set by CraftItemFunction)
-        java.util.List<SlotMapping> slotMappings = task.getSlotMappings();
+        List<SlotMapping> slotMappings = task.getSlotMappings();
         if (slotMappings == null || slotMappings.isEmpty()) {
-            task.fail("No slot mappings");
-            return "Failed to process: no slot mappings specified in task";
+            MemoryUtil.updateTasks(maid, false, "Failed to process: no slot mappings specified in task");
+            return;
         }
         
         IItemHandler maidInv = maid.getAvailableInv(false);
@@ -89,8 +99,8 @@ public class InsertProcessingTask extends AbstractWorkTask {
         }
         
         if (inputInserted == 0) {
-            task.fail("No ingredients");
-            return "Failed to process: no matching ingredients in inventory";
+            MemoryUtil.updateTasks(maid, false, "no ingredients.");
+            return;
         }
         
         if (fuelInserted == 0) {
@@ -98,7 +108,7 @@ public class InsertProcessingTask extends AbstractWorkTask {
         }
         
         // Create processing job in memory
-        ProcessingMemory memory = getOrCreateMemory(maid);
+        JobMemory memory = MemoryUtil.getOrCreateMemory(maid);
         ItemStack expectedOutput = ItemIdUtils.createStack(task.getItemId());
         expectedOutput.setCount(inputInserted);
         
@@ -110,9 +120,10 @@ public class InsertProcessingTask extends AbstractWorkTask {
         MaidAgent.LOGGER.info("Started processing job: {} input ({}), {} fuel, estimated {} ticks", 
                 inputInserted, inputItemId, fuelInserted, estimatedTicks);
         
-        task.complete("Inserted ingredients", inputInserted);
-        return String.format("Inserted %d items + %d fuel into furnace. Processing will take ~%d seconds.", 
+        task.setActualAccount(inputInserted);
+        String msg = String.format("Inserted %d items + %d fuel into furnace. Processing will take ~%d seconds.",
                 inputInserted, fuelInserted, estimatedTicks / 20);
+        MemoryUtil.updateTasks(maid, true, msg);
     }
     
     /**
@@ -159,15 +170,5 @@ public class InsertProcessingTask extends AbstractWorkTask {
         }
         
         return inserted;
-    }
-    
-    private ProcessingMemory getOrCreateMemory(EntityMaid maid) {
-        return maid.getBrain()
-                .getMemory(MemoryModuleRegistry.PROCESSING_JOBS.get())
-                .orElseGet(() -> {
-                    ProcessingMemory memory = new ProcessingMemory();
-                    maid.getBrain().setMemory(MemoryModuleRegistry.PROCESSING_JOBS.get(), memory);
-                    return memory;
-                });
     }
 }

@@ -3,6 +3,7 @@ package com.github.fracture_hikari.maid_agent.util;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
+import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.init.InitEntities;
 import net.minecraft.core.BlockPos;
@@ -95,12 +96,6 @@ public final class TaskQueueHelper {
     public static void queueTask(EntityMaid maid, PendingTask task, BlockPos targetPos) {
         TaskQueue queue = getOrCreateQueue(maid);
         queue.enqueue(task);
-        
-        // Start the first task if this is the only one
-        if (queue.size() == 1 && targetPos != null) {
-            task.setStatus(PendingTask.TaskStatus.MOVING);
-            setMovementTarget(maid, targetPos, DEFAULT_WALK_SPEED);
-        }
     }
     
     /**

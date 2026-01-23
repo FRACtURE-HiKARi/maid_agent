@@ -1,30 +1,12 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
-import com.github.tartaricacid.touhoulittlemaid.entity.ai.brain.task.MaidCheckRateTask;
-import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
-import com.github.tartaricacid.touhoulittlemaid.init.InitEntities;
-import com.github.fracture_hikari.maid_agent.MaidAgent;
-import com.github.fracture_hikari.maid_agent.compat.Integrations;
-import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
+import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.fracture_hikari.maid_agent.maid.memory.ProcessingJob;
-import com.github.fracture_hikari.maid_agent.maid.memory.ProcessingMemory;
+import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.ai.behavior.Behavior;
-import net.minecraft.world.entity.ai.memory.MemoryModuleType;
-import net.minecraft.world.entity.ai.memory.MemoryStatus;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.common.capabilities.ForgeCapabilities;
-import net.minecraftforge.common.util.LazyOptional;
-import net.minecraftforge.items.IItemHandler;
-import studio.fantasyit.maid_storage_manager.maid.behavior.base.MaidMoveToBlockTaskWithArrivalMap;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.Set;
 
 /**
  * Collection behavior for processing outputs.
@@ -37,78 +19,38 @@ import java.util.Optional;
  * 
  * Priority 6 (same as ProcessingMoveTask).
  */
-public class CollectProcessingTask extends MaidCheckRateTask {
-    private static final double CLOSE_ENOUGH = 2.5;
-    
-    private ProcessingJob currentJob = null;
-    private boolean workDone = false;
+public class CollectMoveTask extends AbstractMoveTask {
 
-    public CollectProcessingTask() {
-        super(Map.of(
-                InitEntities.TARGET_POS.get(), MemoryStatus.REGISTERED,
-                MemoryModuleRegistry.PROCESSING_JOBS.get(), MemoryStatus.REGISTERED
-        ), 20, 100);  // Short duration - just collect
-        super.setMaxCheckRate(100);
+    public CollectMoveTask() {
+        super(2000);
     }
 
     @Override
     protected boolean checkExtraStartConditions(ServerLevel level, EntityMaid maid) {
-        if (!Integrations.maidStorageManager()) {
+        if (!super.checkExtraStartConditions(level, maid))
             return false;
-        }
-        
-        // Get processing memory
-        Optional<ProcessingMemory> memoryOpt = maid.getBrain()
-                .getMemory(MemoryModuleRegistry.PROCESSING_JOBS.get());
-        if (memoryOpt.isEmpty()) {
-            return false;
-        }
-        
-        ProcessingMemory memory = memoryOpt.get();
-        List<ProcessingJob> readyJobs = memory.getActiveJobs();
-        
-        // Check if maid is within range of any ready job with output
-        for (ProcessingJob job : readyJobs) {
-            BlockPos endpoint = job.getOutputEndpoint();
-            
-            // Check distance
-            Vec3 targetV3d = Vec3.atCenterOf(endpoint);
-            double distSq = maid.distanceToSqr(targetV3d);
-            if (distSq > Math.pow(CLOSE_ENOUGH, 2)) {
-                continue;  // Not close enough
-            }
-            
-            // Check if output available
-            if (hasOutputAvailable(level, job)) {
-                currentJob = job;
-                MaidAgent.LOGGER.debug("CollectProcessingTask: Ready to collect from {}", endpoint);
-                return true;
-            }
-        }
-        
-        return false;
+        Set<ProcessingJob> jobs = MemoryUtil.getJobs(maid);
+        return !jobs.isEmpty();
     }
-    
-    // Helper used in checkExtraStartConditions
-    private boolean hasOutputAvailable(ServerLevel level, ProcessingJob job) {
-        BlockPos pos = job.getOutputEndpoint();
-        BlockEntity be = level.getBlockEntity(pos);
-        if (be == null) return false;
-        LazyOptional<IItemHandler> cap = be.getCapability(ForgeCapabilities.ITEM_HANDLER);
-        return cap.map(inv -> {
-            int slot = job.getOutputSlot();
-            if (slot >= 0 && slot < inv.getSlots()) {
-                return !inv.getStackInSlot(slot).isEmpty();
-            }
-            return false;
-        }).orElse(false);
+
+    @Override
+    protected boolean shouldMoveTo(ServerLevel level, EntityMaid maid, BlockPos pos) {
+        Set<BlockPos> targets = MemoryUtil.getCollectTarget(maid);
+        return targets.contains(pos.immutable());
     }
+
+    @Override
+    protected void start(ServerLevel level, EntityMaid maid, long gameTimeIn) {
+        this.searchForDestination(level, maid);
+    }
+
     
     // ... inside tick ...
     // Note: I need to replace the whole file or large chunks to fix hasOutputAvailable usage 
     // and the hardcoded slot in tick() and cleanupJobs logic.
     // I will use a larger replacement chunk strategy.
 
+    /*
     @Override
     protected void tick(ServerLevel level, EntityMaid maid, long gameTime) {
         if (workDone || currentJob == null) {
@@ -203,4 +145,5 @@ public class CollectProcessingTask extends MaidCheckRateTask {
         currentJob = null;
         workDone = false;
     }
+     */
 }

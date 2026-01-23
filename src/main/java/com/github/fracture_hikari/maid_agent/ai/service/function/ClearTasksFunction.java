@@ -8,7 +8,7 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.mojang.serialization.Codec;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
-import com.github.fracture_hikari.maid_agent.maid.memory.ProcessingMemory;
+import com.github.fracture_hikari.maid_agent.maid.memory.JobMemory;
 import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
 
 import java.util.Optional;
@@ -61,10 +61,10 @@ public class ClearTasksFunction implements IFunctionCall<ClearTasksFunction.Para
         }
         
         // Clear processing jobs
-        Optional<ProcessingMemory> memoryOpt = maid.getBrain()
+        Optional<JobMemory> memoryOpt = maid.getBrain()
                 .getMemory(MemoryModuleRegistry.PROCESSING_JOBS.get());
         if (memoryOpt.isPresent()) {
-            ProcessingMemory memory = memoryOpt.get();
+            JobMemory memory = memoryOpt.get();
             jobsCleared = memory.getActiveJobs().size();
             memory.clear();
             MaidAgent.LOGGER.info("ClearTasksFunction: Cleared {} processing jobs", jobsCleared);

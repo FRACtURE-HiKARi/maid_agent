@@ -3,18 +3,22 @@ package com.github.fracture_hikari.maid_agent.util;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
+import com.github.tartaricacid.touhoulittlemaid.util.ItemsUtil;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.items.IItemHandler;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import studio.fantasyit.maid_storage_manager.util.InvUtil;
 
 /**
  * Utility class for inventory operations.
  * Provides methods to aggregate and analyze inventories.
  */
-public final class InventoryUtils {
+public final class InventoryUtils extends InvUtil {
     
     private InventoryUtils() {} // Prevent instantiation
     
@@ -115,7 +119,17 @@ public final class InventoryUtils {
         }
         return count;
     }
-    
+
+    public static ItemStack insertAll(IItemHandler handler, ItemStack stack) {
+        ItemStack remains = stack;
+        for (int s = 0; s < handler.getSlots(); s++) {
+            remains = handler.insertItem(s, remains, false);
+            if (remains.isEmpty()) return ItemStack.EMPTY;
+        }
+        return remains;
+    }
+
+
     /**
      * Item information with display name and count.
      */

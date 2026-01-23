@@ -1,5 +1,6 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
+import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
@@ -27,17 +28,25 @@ public class CraftingWorkTask extends AbstractWorkTask {
     }
 
     @Override
-    protected boolean canHandle(PendingTask task) {
-        return task.getType() == PendingTask.TaskType.CRAFT 
+    protected boolean checkExtraStartConditions(ServerLevel level, EntityMaid maid) {
+        if (!super.checkExtraStartConditions(level, maid)) return false;
+        Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
+        if (taskOpt.isEmpty()) return false;
+        PendingTask task = taskOpt.get();
+        return task.getType() == PendingTask.TaskType.CRAFT
             && task.getWorkstationType() == PendingTask.WorkstationType.CRAFTING_TABLE;
     }
 
     @Override
-    protected String performWork(ServerLevel level, EntityMaid maid, PendingTask task) {
+    protected void handle(ServerLevel level, EntityMaid maid) {
+        Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
+        if (taskOpt.isEmpty()) return;
+        PendingTask task = taskOpt.get();
+
         ItemStack targetItem = ItemIdUtils.createStack(task.getItemId());
         if (targetItem.isEmpty()) {
-            task.fail("Unknown item");
-            return "Failed to craft: unknown item " + task.getItemId();
+            MemoryUtil.updateTasks(maid, false, "Failed to craft: unknown item " + task.getItemId());
+            return;
         }
         
         // Get pre-computed crafting steps (sub-recipes first, main recipe last)
@@ -60,8 +69,8 @@ public class CraftingWorkTask extends AbstractWorkTask {
             Optional<CraftingRecipe> stepRecipe = RecipeLookup.findById(level, stepRecipeId);
             
             if (stepRecipe.isEmpty()) {
-                MaidAgent.LOGGER.warn("Recipe not found: {}", stepRecipeId);
-                continue;
+                MemoryUtil.updateTasks(maid, false, "Recipe not found: " + stepRecipeId);
+                return;
             }
             
             CraftingRecipe recipe = stepRecipe.get();
@@ -92,11 +101,11 @@ public class CraftingWorkTask extends AbstractWorkTask {
         }
         
         if (finalCraftCount > 0) {
-            task.complete("Crafted items", finalCraftCount);
-            return String.format("Successfully crafted %d %s", finalCraftCount, getItemName(targetItem));
+            task.setActualAccount(finalCraftCount);
+            MemoryUtil.updateTasks(maid, true, "craft successful.");
         } else {
-            task.fail("Missing ingredients");
-            return "Could not craft " + getItemName(targetItem) + " (missing ingredients)";
+            String msg = "Could not craft " + getItemName(targetItem) + " (missing ingredients)";
+            MemoryUtil.updateTasks(maid, false, msg);
         }
     }
     

@@ -176,13 +176,11 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
             // Create task and add to queue
             PendingTask task = new PendingTask(maid, taskType, op.itemId(), effectiveCount);
             task.setTarget(target);
-            task.setStatus(PendingTask.TaskStatus.PENDING);
             int position = taskQueue.enqueue(task);
             queued++;
             
             // Start walking for first task
             if (wasEmpty && queued == 1) {
-                task.setStatus(PendingTask.TaskStatus.MOVING);
                 TaskQueueHelper.setMovementTarget(maid, target.getPos());
             }
             

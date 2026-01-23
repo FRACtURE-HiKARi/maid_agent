@@ -9,12 +9,12 @@ import com.mojang.serialization.Codec;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.ProcessingJob;
-import com.github.fracture_hikari.maid_agent.maid.memory.ProcessingMemory;
+import com.github.fracture_hikari.maid_agent.maid.memory.JobMemory;
 import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
 import com.github.fracture_hikari.maid_agent.util.TaskQueueHelper;
 
-import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * LLM function to query the current task queue and processing jobs status.
@@ -66,10 +66,10 @@ public class GetTaskQueueFunction implements IFunctionCall<GetTaskQueueFunction.
             // Current task
             PendingTask current = queue.peek();
             if (current != null) {
-                sb.append(String.format("Current: %s %s (status: %s)\n",
+                sb.append(String.format("Current: %s %s\n",
                         current.getType().name().toLowerCase(),
-                        current.getItemId().replace("minecraft:", ""),
-                        current.getStatus().name().toLowerCase()));
+                        current.getItemId().replace("minecraft:", "")
+                ));
             }
             
             // Queue size
@@ -90,18 +90,18 @@ public class GetTaskQueueFunction implements IFunctionCall<GetTaskQueueFunction.
         }
         
         // Processing Jobs section
-        Optional<ProcessingMemory> memoryOpt = maid.getBrain()
+        Optional<JobMemory> memoryOpt = maid.getBrain()
                 .getMemory(MemoryModuleRegistry.PROCESSING_JOBS.get());
         
         if (memoryOpt.isPresent()) {
-            ProcessingMemory memory = memoryOpt.get();
+            JobMemory memory = memoryOpt.get();
             
-            List<ProcessingJob> activeJobs = memory.getActiveJobs();
+            Set<ProcessingJob> activeJobs = memory.getActiveJobs();
             
             if (!activeJobs.isEmpty()) {
                 hasContent = true;
                 
-                if (sb.length() > 0) sb.append("\n");
+                if (!sb.isEmpty()) sb.append("\n");
                 sb.append("## Processing Jobs\n");
                 
                 for (ProcessingJob job : activeJobs) {

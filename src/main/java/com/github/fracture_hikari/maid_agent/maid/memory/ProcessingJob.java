@@ -12,17 +12,10 @@ import java.util.UUID;
  * Timing is handled by behavior cooldown, not job timer.
  */
 public class ProcessingJob {
-    
-    public enum ProcessingState {
-        WAITING,      // Ingredients inserted, waiting for output
-        COLLECTED     // Done
-    }
-    
     private final String id;
     private final BlockPos outputEndpoint;   // Where to collect output
     private final int outputSlot;            // Slot to read output from
     private final ItemStack expectedOutput;
-    private ProcessingState state;
     private int collectedCount;              // How many items collected so far
     
     /**
@@ -33,7 +26,6 @@ public class ProcessingJob {
         this.outputEndpoint = outputEndpoint;
         this.outputSlot = outputSlot;
         this.expectedOutput = expectedOutput.copy();
-        this.state = ProcessingState.WAITING;
         this.collectedCount = 0;
     }
     
@@ -52,22 +44,7 @@ public class ProcessingJob {
     public ItemStack getExpectedOutput() {
         return expectedOutput;
     }
-    
-    public ProcessingState getState() {
-        return state;
-    }
-    
-    public void setState(ProcessingState state) {
-        this.state = state;
-    }
-    
-    /**
-     * Mark as collected (done).
-     */
-    public void markCollected() {
-        this.state = ProcessingState.COLLECTED;
-    }
-    
+
     /**
      * Get expected output count.
      */
@@ -107,7 +84,7 @@ public class ProcessingJob {
     
     @Override
     public String toString() {
-        return String.format("ProcessingJob{id=%s, state=%s, output=%s, collected=%d/%d}", 
-                id, state, expectedOutput.getItem(), collectedCount, expectedOutput.getCount());
+        return String.format("ProcessingJob{id=%s, output=%s, collected=%d/%d}",
+                id, expectedOutput.getItem(), collectedCount, expectedOutput.getCount());
     }
 }
