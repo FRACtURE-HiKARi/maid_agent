@@ -68,10 +68,10 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
      * Check if queue has a similar task (same type, item, and storage).
      * Used for duplicate detection warning (but doesn't prevent adding).
      */
-    public boolean hasSimilarTask(PendingTask.TaskType type, String itemId, int storageIndex) {
+    public boolean hasSimilarTask(PendingTask.TaskType type, net.minecraft.world.item.ItemStack item, int storageIndex) {
         for (PendingTask task : tasks) {
             if (task.getType() == type && 
-                task.getItemId().equals(itemId) &&
+                studio.fantasyit.maid_storage_manager.util.ItemStackUtil.isSame(task.getRequestedItem(), item, false) &&
                 task.getTarget().isPresent() &&
                 task.getTarget().get().getPos().equals(getStoragePosForIndex(storageIndex))) {
                 return true;
@@ -100,8 +100,8 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
         if (task != null) {
             completedResults.add(new TaskResult(
                 task.getType(),
-                task.getItemId(),
-                task.getCount(),
+                com.github.fracture_hikari.maid_agent.util.ItemIdUtils.getId(task.getRequestedItem()),
+                task.getRequestedItem().getCount(),
                 actualCount,
                 success,
                 message

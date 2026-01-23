@@ -46,9 +46,9 @@ public class CraftingWorkTask extends AbstractWorkTask {
         if (taskOpt.isEmpty()) return;
         PendingTask task = taskOpt.get();
 
-        ItemStack targetItem = ItemIdUtils.createStack(task.getItemId());
+        ItemStack targetItem = task.getRequestedItem().copy();
         if (targetItem.isEmpty()) {
-            MemoryUtil.updateTasks(maid, false, "Failed to craft: unknown item " + task.getItemId());
+            MemoryUtil.updateTasks(maid, false, "Failed to craft: unknown item " + ItemIdUtils.getId(targetItem));
             return;
         }
         

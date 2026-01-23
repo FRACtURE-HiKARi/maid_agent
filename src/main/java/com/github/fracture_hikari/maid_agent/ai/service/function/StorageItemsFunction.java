@@ -167,14 +167,22 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
             
             WorkBlockTarget target = targetOpt.get();
             
+            // Create ItemStack first
+            net.minecraft.world.item.ItemStack stack = com.github.fracture_hikari.maid_agent.util.ItemIdUtils.createStack(op.itemId(), effectiveCount);
+            if (stack.isEmpty()) {
+                response.append(String.format("Skipped operation %d: invalid item '%s'. ", i + 1, op.itemId()));
+                continue;
+            }
+
             // Check for similar task already in queue (warn but allow - could be multiple stacks)
-            if (taskQueue.hasSimilarTask(taskType, op.itemId(), op.storageIndex())) {
+            if (taskQueue.hasSimilarTask(taskType, stack, op.storageIndex())) {
                 response.append(String.format("Note: Similar %s for %s already queued. ", 
                         op.action(), op.itemId().replace("minecraft:", "")));
             }
             
             // Create task and add to queue
-            PendingTask task = new PendingTask(maid, taskType, op.itemId(), effectiveCount);
+            
+            PendingTask task = new PendingTask(maid, taskType, stack);
             task.setTarget(target);
             int position = taskQueue.enqueue(task);
             queued++;

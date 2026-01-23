@@ -82,19 +82,19 @@ public class InsertWorkTask extends AbstractWorkTask {
         
         // Process each slot mapping - no burn-time detection, use explicit slots
         for (var mapping : slotMappings) {
-            String itemId = mapping.getItemId();
+            ItemStack itemToInsert = mapping.item();
             int needed = mapping.getCount();
             int targetSlot = mapping.slot();
             
-            int inserted = insertItemById(maidInv, furnace, itemId, needed, targetSlot);
+            int inserted = insertItem(maidInv, furnace, itemToInsert, needed, targetSlot);
             
             if (targetSlot == FURNACE_INPUT_SLOT) {
                 inputInserted += inserted;
-                inputItemId = itemId;
-                MaidAgent.LOGGER.debug("InsertProcessingTask: Inserted {} input {} to slot {}", inserted, itemId, targetSlot);
+                inputItemId = ItemIdUtils.getId(itemToInsert);
+                MaidAgent.LOGGER.debug("InsertProcessingTask: Inserted {} input {} to slot {}", inserted, inputItemId, targetSlot);
             } else if (targetSlot == FURNACE_FUEL_SLOT) {
                 fuelInserted += inserted;
-                MaidAgent.LOGGER.debug("InsertProcessingTask: Inserted {} fuel {} to slot {}", inserted, itemId, targetSlot);
+                MaidAgent.LOGGER.debug("InsertProcessingTask: Inserted {} fuel {} to slot {}", inserted, ItemIdUtils.getId(itemToInsert), targetSlot);
             }
         }
         
@@ -109,7 +109,7 @@ public class InsertWorkTask extends AbstractWorkTask {
         
         // Create processing job in memory
         JobMemory memory = MemoryUtil.getOrCreateMemory(maid);
-        ItemStack expectedOutput = ItemIdUtils.createStack(task.getItemId());
+        ItemStack expectedOutput = task.getRequestedItem().copy();
         expectedOutput.setCount(inputInserted);
         
         int estimatedTicks = inputInserted * TICKS_PER_SMELT;
@@ -127,18 +127,18 @@ public class InsertWorkTask extends AbstractWorkTask {
     }
     
     /**
-     * Insert a specific item by ID into furnace slot.
+     * Insert a specific item into furnace slot.
      */
-    private int insertItemById(IItemHandler maidInv, AbstractFurnaceBlockEntity furnace, 
-                                String targetItemId, int maxCount, int furnaceSlot) {
+    private int insertItem(IItemHandler maidInv, AbstractFurnaceBlockEntity furnace, 
+                                ItemStack targetItem, int maxCount, int furnaceSlot) {
         int inserted = 0;
         
         for (int slot = 0; slot < maidInv.getSlots() && inserted < maxCount; slot++) {
             ItemStack inSlot = maidInv.getStackInSlot(slot);
             if (inSlot.isEmpty()) continue;
             
-            String slotItemId = ItemIdUtils.getId(inSlot);
-            if (!slotItemId.equals(targetItemId)) continue;
+            // Check if item matches target
+            if (!ItemStack.isSameItem(inSlot, targetItem)) continue;
             
             int toExtract = Math.min(maxCount - inserted, inSlot.getCount());
             ItemStack extracted = maidInv.extractItem(slot, toExtract, false);

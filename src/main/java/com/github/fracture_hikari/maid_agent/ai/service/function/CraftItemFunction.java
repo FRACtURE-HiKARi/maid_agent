@@ -358,7 +358,8 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
         PendingTask.TaskType taskType = isFurnace ? PendingTask.TaskType.PROCESS : PendingTask.TaskType.CRAFT;
         
         // Create task
-        PendingTask task = new PendingTask(maid, taskType, itemId, count);
+        net.minecraft.world.item.ItemStack stack = ItemIdUtils.createStack(itemId, count);
+        PendingTask task = new PendingTask(maid, taskType, stack);
         task.setWorkstationType(workstationType);
         task.setRecipeId(recipeId);
         task.setCraftingSteps(craftingSteps);

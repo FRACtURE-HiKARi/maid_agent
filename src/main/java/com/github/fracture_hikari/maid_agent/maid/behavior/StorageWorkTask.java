@@ -47,15 +47,16 @@ public class StorageWorkTask extends AbstractWorkTask {
             return;
         }
 
-        ItemStack targetItem = ItemIdUtils.createStack(task.getItemId());
+        ItemStack targetItem = task.getRequestedItem().copy();
+        String targetItemId = ItemIdUtils.getId(targetItem);
         if (targetItem.isEmpty()) {
-            MemoryUtil.updateTasks(maid, false, "Failed to fetch: unknown item " + task.getItemId());
+            MemoryUtil.updateTasks(maid, false, "Failed to fetch: unknown item " + targetItemId);
             return;
         }
 
         BlockEntity be = level.getBlockEntity(target.getPos());
         if (be == null) {
-            MemoryUtil.updateTasks(maid, false, "Failed to fetch: no storage at " + target.getPos() + task.getItemId());
+            MemoryUtil.updateTasks(maid, false, "Failed to fetch: no storage at " + target.getPos() + " for " + targetItemId);
             return;
         }
 

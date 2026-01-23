@@ -2,6 +2,7 @@ package com.github.fracture_hikari.maid_agent.maid.memory;
 
 import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
+import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Optional;
@@ -35,8 +36,7 @@ public class PendingTask {
     }
 
     private final TaskType type;
-    private final String itemId;
-    private final int count;
+    private final ItemStack requestedItem;
     @Nullable
     private WorkBlockTarget target;
     private int actualCount; // Actual items fetched/stored/crafted
@@ -49,14 +49,13 @@ public class PendingTask {
     @Nullable
     private java.util.List<SlotMapping> slotMappings;  // Slot mappings for PROCESS tasks
 
-    public PendingTask(EntityMaid maid, TaskType type, String itemId, int count) {
-        this(maid, type, itemId, count, null);
+    public PendingTask(EntityMaid maid, TaskType type, ItemStack requestedItem) {
+        this(maid, type, requestedItem, null);
     }
 
-    public PendingTask(EntityMaid maid, TaskType type, String itemId, int count, @Nullable WorkBlockTarget target) {
+    public PendingTask(EntityMaid maid, TaskType type, ItemStack requestedItem, @Nullable WorkBlockTarget target) {
         this.type = type;
-        this.itemId = itemId;
-        this.count = count;
+        this.requestedItem = requestedItem.copy();
         this.target = target;
         this.actualCount = -1;
         this.workstationType = null;
@@ -69,13 +68,11 @@ public class PendingTask {
         return type;
     }
 
-    public String getItemId() {
-        return itemId;
+    public ItemStack getRequestedItem() {
+        return requestedItem;
     }
 
-    public int getCount() {
-        return count;
-    }
+    public int getCount() {return requestedItem.getCount();}
 
     public Optional<WorkBlockTarget> getTarget() {
         return Optional.ofNullable(target);
@@ -132,6 +129,6 @@ public class PendingTask {
     @Override
     public String toString() {
         return String.format("PendingTask{type=%s, item=%s, count=%d, actual=%d}",
-                type, itemId, count, actualCount);
+                type, com.github.fracture_hikari.maid_agent.util.ItemIdUtils.getId(requestedItem), requestedItem.getCount(), actualCount);
     }
 }

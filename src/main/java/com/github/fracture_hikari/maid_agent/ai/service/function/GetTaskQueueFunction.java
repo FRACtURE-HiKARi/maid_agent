@@ -68,7 +68,7 @@ public class GetTaskQueueFunction implements IFunctionCall<GetTaskQueueFunction.
             if (current != null) {
                 sb.append(String.format("Current: %s %s\n",
                         current.getType().name().toLowerCase(),
-                        current.getItemId().replace("minecraft:", "")
+                        com.github.fracture_hikari.maid_agent.util.ItemIdUtils.getId(current.getRequestedItem()).replace("minecraft:", "")
                 ));
             }
             

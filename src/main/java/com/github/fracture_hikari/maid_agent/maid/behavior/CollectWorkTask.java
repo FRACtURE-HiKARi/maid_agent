@@ -38,7 +38,7 @@ public class CollectWorkTask extends AbstractWorkTask {
     protected void handle(ServerLevel level, EntityMaid maid) {
         if (currentJob == null) return;
         if (currentJob.isFullyCollected()) {
-            MemoryUtil.updateJobs(maid, true, "done", currentJob);
+            MemoryUtil.updateJobs(maid, true, "job done: fully collected.", currentJob);
             return;
         }
 
@@ -47,7 +47,7 @@ public class CollectWorkTask extends AbstractWorkTask {
         IItemHandler outputInv = be.getCapability(ForgeCapabilities.ITEM_HANDLER).orElseGet(null);
         int outputSlot = currentJob.getOutputSlot();
         if (outputSlot < 0 || outputSlot >= outputInv.getSlots()) {
-            MemoryUtil.updateJobs(maid, false, "invalid slot", currentJob);
+            MemoryUtil.updateJobs(maid, false, "job fail: invalid output slot.", currentJob);
             currentJob = null;
             return;
         }
@@ -59,7 +59,7 @@ public class CollectWorkTask extends AbstractWorkTask {
         currentJob.addCollected(output.getCount() - remains.getCount());
         if (!remains.isEmpty()) {
             outputInv.insertItem(outputSlot, remains, false);
-            MemoryUtil.updateJobs(maid, false, "maid inventory full", currentJob);
+            MemoryUtil.updateJobs(maid, false, "job fail: maid inventory full", currentJob);
         }
     }
 
