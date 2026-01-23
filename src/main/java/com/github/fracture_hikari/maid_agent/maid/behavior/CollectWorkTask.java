@@ -1,5 +1,6 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
+import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.fracture_hikari.maid_agent.maid.memory.ProcessingJob;
 import com.github.fracture_hikari.maid_agent.util.InventoryUtils;
@@ -9,6 +10,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.items.IItemHandler;
+import studio.fantasyit.maid_storage_manager.storage.ItemHandler.SimulateTargetInteractHelper;
 
 
 import java.util.Optional;
@@ -28,6 +30,7 @@ public class CollectWorkTask extends AbstractWorkTask {
             hasReached(maid, job.getOutputEndpoint().getCenter())).findAny();
         if (jobOpt.isEmpty()) return false;
         currentJob = jobOpt.get();
+        helper = new SimulateTargetInteractHelper(maid, currentJob.getOutputEndpoint(), null, level);
         return true;
     }
 

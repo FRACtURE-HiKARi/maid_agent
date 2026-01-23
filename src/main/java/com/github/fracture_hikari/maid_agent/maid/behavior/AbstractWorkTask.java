@@ -1,5 +1,8 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
+import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
+import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
+import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.tartaricacid.touhoulittlemaid.entity.ai.brain.task.MaidCheckRateTask;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.init.InitEntities;
@@ -13,10 +16,11 @@ import net.minecraft.world.entity.ai.memory.MemoryStatus;
 import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.items.IItemHandler;
+import studio.fantasyit.maid_storage_manager.storage.ItemHandler.SimulateTargetInteractHelper;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 /**
  * Abstract base class for work tasks.
@@ -26,6 +30,7 @@ import java.util.Optional;
 public abstract class AbstractWorkTask extends MaidCheckRateTask {
     protected static final double CLOSE_ENOUGH = 2.5;
     protected static final float WALK_SPEED = 0.6f;
+    protected SimulateTargetInteractHelper helper = null;
 
     public AbstractWorkTask() {
         this(100, 200);
@@ -54,9 +59,16 @@ public abstract class AbstractWorkTask extends MaidCheckRateTask {
 
     @Override
     protected void start(ServerLevel level, EntityMaid maid, long pTime) {
+        if (helper != null) {
+            helper.open();
+        }
         handle(level, maid);
         maid.getBrain().eraseMemory(InitEntities.TARGET_POS.get());
         maid.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+        if (helper != null) {
+            helper.stop();
+            helper = null;
+        }
     }
 
     protected boolean hasReached(EntityMaid maid, Vec3 targetV3d) {
@@ -89,44 +101,14 @@ public abstract class AbstractWorkTask extends MaidCheckRateTask {
         return stack.getHoverName().getString();
     }
 
-    /**
-     * Moves items from source to destination safely.
-     * Logic: Extract from Source -> Insert into Dest -> Return leftovers to Source if Dest is full.
-     */
-    protected int transferItems(IItemHandler source, IItemHandler dest, ItemStack matcher, int maxAmount) {
-        int totalMoved = 0;
-
-        for (int i = 0; i < source.getSlots() && totalMoved < maxAmount; i++) {
-            ItemStack inSlot = source.getStackInSlot(i);
-            if (inSlot.isEmpty() || !ItemStack.isSameItem(inSlot, matcher)) continue;
-
-            // Calculate how much we want to move from this slot
-            int wantToMove = Math.min(maxAmount - totalMoved, inSlot.getCount());
-
-            // 1. Extract from Source
-            ItemStack extracted = source.extractItem(i, wantToMove, false);
-            if (extracted.isEmpty()) continue;
-
-            int originalExtractedCount = extracted.getCount();
-
-            // 2. Insert into Destination
-            for (int j = 0; j < dest.getSlots(); j++) {
-                extracted = dest.insertItem(j, extracted, false);
-                if (extracted.isEmpty()) break;
-            }
-
-            // 3. Calculate actual success amount
-            int successfullyMoved = originalExtractedCount - extracted.getCount();
-            totalMoved += successfullyMoved;
-
-            // 4. Return leftovers to Source (Safety check)
-            if (!extracted.isEmpty()) {
-                for (int k = 0; k < source.getSlots(); k++) {
-                    extracted = source.insertItem(k, extracted, false);
-                    if (extracted.isEmpty()) break;
-                }
-            }
+    protected boolean checkTaskMemory(ServerLevel level, EntityMaid maid, Predicate<PendingTask> predicate) {
+        Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
+        if (taskOpt.isEmpty()) return false;
+        PendingTask task = taskOpt.get();
+        if (task.getTarget().isPresent()) {
+            WorkBlockTarget target = task.getTarget().get();
+            helper = new SimulateTargetInteractHelper(maid, target.getPos(), target.getSideOrNull(), level);
         }
-        return totalMoved;
+        return predicate.test(task);
     }
 }

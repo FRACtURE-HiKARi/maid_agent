@@ -1,5 +1,6 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
+import com.github.fracture_hikari.maid_agent.util.InventoryUtils;
 import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
@@ -26,11 +27,12 @@ public class StorageWorkTask extends AbstractWorkTask {
     @Override
     protected boolean checkExtraStartConditions(ServerLevel level, EntityMaid maid) {
         if (!super.checkExtraStartConditions(level, maid)) return false;
-        Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
-        if (taskOpt.isEmpty()) return false;
-        PendingTask task = taskOpt.get();
-        return task.getType() == PendingTask.TaskType.FETCH ||
-                task.getType() == PendingTask.TaskType.STORE;
+        return checkTaskMemory(
+                level,
+                maid,
+                task -> task.getType() == PendingTask.TaskType.FETCH
+                        || task.getType() == PendingTask.TaskType.STORE
+        );
     }
 
     @Override
@@ -71,7 +73,7 @@ public class StorageWorkTask extends AbstractWorkTask {
         IItemHandler destination = isFetch ? maidInv : storage;
 
         // 2. Run the unified transfer logic
-        int amountModified = transferItems(source, destination, targetItem, task.getCount());
+        int amountModified = InventoryUtils.transferItems(source, destination, targetItem, task.getCount());
 
         // 3. Post-processing (Updating task status and returning strings)
         String itemName = getItemName(targetItem);

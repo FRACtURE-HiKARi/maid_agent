@@ -1,5 +1,6 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
+import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
@@ -11,6 +12,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraftforge.items.IItemHandler;
+import studio.fantasyit.maid_storage_manager.storage.ItemHandler.SimulateTargetInteractHelper;
 
 import java.util.HashMap;
 import java.util.List;
@@ -30,11 +32,12 @@ public class CraftingWorkTask extends AbstractWorkTask {
     @Override
     protected boolean checkExtraStartConditions(ServerLevel level, EntityMaid maid) {
         if (!super.checkExtraStartConditions(level, maid)) return false;
-        Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
-        if (taskOpt.isEmpty()) return false;
-        PendingTask task = taskOpt.get();
-        return task.getType() == PendingTask.TaskType.CRAFT
-            && task.getWorkstationType() == PendingTask.WorkstationType.CRAFTING_TABLE;
+        return checkTaskMemory(
+                level,
+                maid,
+                task -> task.getType() == PendingTask.TaskType.CRAFT
+                        && task.getWorkstationType() == PendingTask.WorkstationType.CRAFTING_TABLE
+        );
     }
 
     @Override
