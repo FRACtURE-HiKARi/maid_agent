@@ -138,7 +138,7 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
         
         // Get maid's inventory and storage
         Map<String, Integer> maidInventory = InventoryUtils.getMaidInventory(maid);
-        Map<String, Integer> storageInventory = InventoryUtils.getStorageInventory(maid);
+        Map<String, Integer> storageInventory = java.util.Collections.emptyMap();
         
         StringBuilder sb = new StringBuilder();
         
@@ -177,7 +177,7 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
                 "No recipe found for %s. Use jei_item_search to find valid item IDs.",
                 params.itemId()));
         if (params.recursiveSearch()) {
-            CraftingTreeEvaluator evaluator = new CraftingTreeEvaluator(level, maidInventory, storageInventory);
+            CraftingTreeEvaluator evaluator = new CraftingTreeEvaluator(level, maidInventory);
             List<CraftingTreeEvaluator.EvaluatedTree> trees = evaluator.evaluateRecipes(targetItem, count);
             
             if (trees.isEmpty()) {

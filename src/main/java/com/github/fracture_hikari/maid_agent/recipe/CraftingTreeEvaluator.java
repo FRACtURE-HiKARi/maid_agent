@@ -8,7 +8,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SmeltingRecipe;
 
 import java.util.*;
@@ -16,45 +15,47 @@ import java.util.*;
 /**
  * Evaluates crafting trees to find the best path based on available inventory.
  * Prioritizes trees where all ingredients are available.
+ * Unifies search for both CraftingTable and Furnace recipes.
  */
 public class CraftingTreeEvaluator {
     
     private final ServerLevel level;
-    private final Map<String, Integer> availableItems; // Combined maid + storage inventory
+    private final Map<String, Integer> availableItems;
     private final int maxDepth;
     
-    public CraftingTreeEvaluator(ServerLevel level, Map<String, Integer> maidInv, Map<String, Integer> storageInv) {
+    public CraftingTreeEvaluator(ServerLevel level, Map<String, Integer> availableItems) {
         this.level = level;
         this.maxDepth = CraftConfig.MAX_CRAFT_TREE_DEPTH.get();
-        
-        // Combine inventories
-        this.availableItems = new HashMap<>(maidInv);
-        storageInv.forEach((k, v) -> availableItems.merge(k, v, Integer::sum));
+        // Copy to avoid modifying original
+        this.availableItems = new HashMap<>(availableItems);
     }
     
     /**
-     * Evaluate all recipes for an item and return ranked results.
-     * Recipes with complete ingredient trees are ranked first.
+     * Evaluate all recipes (crafting & smelting) for an item and return ranked results.
      */
     public List<EvaluatedTree> evaluateRecipes(ItemStack target, int count) {
         List<EvaluatedTree> results = new ArrayList<>();
         
-        // Get all crafting recipes using RecipeLookup
-        List<CraftingRecipe> craftingRecipes = RecipeLookup.findByOutput(level, target, 20);
+        // 1. Gather all candidate recipes (Crafting + Smelting)
+        List<RecipeData> candidates = new ArrayList<>();
         
-        for (CraftingRecipe recipe : craftingRecipes) {
+        // Crafting recipes
+        for (CraftingRecipe r : RecipeLookup.findByOutput(level, target, 20)) {
+            candidates.add(new RecipeData(r));
+        }
+        
+        // Smelting recipes
+        for (SmeltingRecipe r : RecipeLookup.findAllSmeltingByOutput(level, target, 10)) {
+            candidates.add(new RecipeData(r));
+        }
+        
+        // 2. Evaluate each candidate
+        for (RecipeData recipe : candidates) {
             EvaluatedTree tree = evaluateTree(recipe, count, 0, new HashMap<>(availableItems));
             results.add(tree);
         }
         
-        // Get ALL smelting recipes (e.g., iron_ore AND raw_iron → iron_ingot)
-        List<SmeltingRecipe> smeltingRecipes = RecipeLookup.findAllSmeltingByOutput(level, target, 10);
-        for (SmeltingRecipe recipe : smeltingRecipes) {
-            EvaluatedTree tree = evaluateSmeltingTree(recipe, count, 0, new HashMap<>(availableItems));
-            results.add(tree);
-        }
-        
-        // Sort: valid trees first, then by missing count
+        // 3. Sort: valid trees first, then by missing count
         results.sort((a, b) -> {
             if (a.isComplete() && !b.isComplete()) return -1;
             if (!a.isComplete() && b.isComplete()) return 1;
@@ -64,209 +65,235 @@ public class CraftingTreeEvaluator {
         return results;
     }
     
-    private EvaluatedTree evaluateTree(CraftingRecipe recipe, int count, int depth, Map<String, Integer> remaining) {
-        String recipeId = recipe.getId().toString();
-        ItemStack output = recipe.getResultItem(level.registryAccess());
-        int outputCount = output.getCount();
-        int craftsNeeded = (int) Math.ceil((double) count / outputCount);
+    /**
+     * Unified evaluation for any recipe type.
+     */
+    private EvaluatedTree evaluateTree(RecipeData recipe, int count, int depth, Map<String, Integer> remaining) {
+        // Calculate how many operations we need
+        // For crafting (e.g. 1 log -> 4 planks), need = ceil(target / output_per_craft)
+        // For smelting (e.g. 1 ore -> 1 ingot), usually 1 to 1, but generic formula works.
+        ItemStack outputStack = recipe.getResultItem(level);
+        int outputCount = outputStack.getCount();
+        int opsNeeded = (int) Math.ceil((double) count / outputCount);
         
-        // Collect ingredients, then merge duplicates
+        // Determine workstation
+        String workstation = recipe.isSmelting ? "minecraft:furnace" : "minecraft:crafting_table";
+        
+        // Collect ingredients
         Map<String, IngredientResult> mergedIngredients = new LinkedHashMap<>();
         int totalMissing = 0;
         
-        for (Ingredient ingredient : recipe.getIngredients()) {
+        // 1. Regular Ingredients
+        List<Ingredient> ingredients = recipe.getIngredients();
+        for (Ingredient ingredient : ingredients) {
             if (ingredient.isEmpty()) continue;
             
-            ItemStack[] items = ingredient.getItems();
-            if (items.length == 0) continue;
+            // For smelting, we usually have 1 ingredient. For crafting, multiple.
+            // We need 1 item per op per ingredient slot usually (unless custom recipe, but standard is 1)
+            // Smelting recipes in MC are 1 input -> 1 output usually.
             
-            // Find best matching item for this ingredient slot
-            IngredientResult result = evaluateIngredient(ingredient, 1, depth, remaining);
-            
-            // Merge with existing if same item
-            String itemId = result.getItemId();
+            IngredientResult bestForSlot = evaluateIngredient(ingredient, 1, depth, remaining);
+             
+            // Merge results by item ID
+            String itemId = bestForSlot.getItemId();
             if (mergedIngredients.containsKey(itemId)) {
-                IngredientResult existing = mergedIngredients.get(itemId);
-                mergedIngredients.put(itemId, existing.merge(result));
+                mergedIngredients.put(itemId, mergedIngredients.get(itemId).merge(bestForSlot));
             } else {
-                mergedIngredients.put(itemId, result);
+                mergedIngredients.put(itemId, bestForSlot);
             }
         }
         
-        // Scale by crafts needed and calculate total missing
-        List<IngredientResult> ingredients = new ArrayList<>();
+        List<IngredientResult> finalIngredients = new ArrayList<>();
+        
+        // Scale ingredients by operations needed
         for (IngredientResult ir : mergedIngredients.values()) {
-            IngredientResult scaled = ir.scale(craftsNeeded);
-            ingredients.add(scaled);
+            IngredientResult scaled = ir.scale(opsNeeded);
+            
+            // If smelting, assign slot 0 (input)
+            if (recipe.isSmelting) {
+                // Accessing private field or recreating? created constructor for copy
+                scaled = new IngredientResult(scaled.getItemId(), scaled.getNeed(), scaled.getHave(),
+                        scaled.getMissing(), scaled.getSubTree(), 0);
+            }
+            
+            finalIngredients.add(scaled);
             totalMissing += scaled.getMissing();
         }
         
-        return new EvaluatedTree(recipeId, "minecraft:crafting_table", 
-                output.getItem().builtInRegistryHolder().key().location().toString(),
-                count, ingredients, totalMissing);
-    }
-    
-    private EvaluatedTree evaluateSmeltingTree(SmeltingRecipe recipe, int count, int depth, Map<String, Integer> remaining) {
-        String recipeId = recipe.getId().toString();
-        ItemStack output = recipe.getResultItem(level.registryAccess());
-        
-        // Collect and merge ingredients
-        Map<String, IngredientResult> mergedIngredients = new LinkedHashMap<>();
-        
-        for (Ingredient ingredient : recipe.getIngredients()) {
-            if (ingredient.isEmpty()) continue;
-            
-            IngredientResult result = evaluateIngredient(ingredient, 1, depth, remaining);
-            String itemId = result.getItemId();
-            if (mergedIngredients.containsKey(itemId)) {
-                mergedIngredients.put(itemId, mergedIngredients.get(itemId).merge(result));
-            } else {
-                mergedIngredients.put(itemId, result);
+        // 2. Fuel (Smelting Only)
+        if (recipe.isSmelting) {
+            IngredientResult fuel = calculateFuelNeeded(opsNeeded, remaining);
+            if (fuel != null) {
+                finalIngredients.add(fuel);
+                totalMissing += fuel.getMissing();
             }
         }
         
-        // Scale by count, assign slot 0 (input), and calculate total missing
-        List<IngredientResult> ingredients = new ArrayList<>();
-        int totalMissing = 0;
-        for (IngredientResult ir : mergedIngredients.values()) {
-            IngredientResult scaled = ir.scale(count);
-            // Assign slot 0 (furnace input) to all smelting ingredients
-            IngredientResult withSlot = new IngredientResult(
-                    scaled.getItemId(), scaled.getNeed(), scaled.getHave(), scaled.getMissing(), 
-                    scaled.getSubTree(), 0);  // slot 0 = input
-            ingredients.add(withSlot);
-            totalMissing += withSlot.getMissing();
-        }
-        
-        // Calculate fuel needed and add as ingredient
-        IngredientResult fuelResult = calculateFuelNeeded(count, remaining);
-        if (fuelResult != null) {
-            ingredients.add(fuelResult);
-            totalMissing += fuelResult.getMissing();
-        }
-        
-        return new EvaluatedTree(recipeId, "minecraft:furnace",
-                output.getItem().builtInRegistryHolder().key().location().toString(),
-                count, ingredients, totalMissing);
+        return new EvaluatedTree(
+                recipe.getId(), 
+                workstation, 
+                outputStack.getItem().builtInRegistryHolder().key().location().toString(),
+                count, 
+                finalIngredients, 
+                totalMissing
+        );
     }
     
-    /**
-     * Calculate fuel needed for smelting. Finds best fuel in inventory (longest burn time).
-     * Returns an IngredientResult representing fuel requirement.
-     */
-    private IngredientResult calculateFuelNeeded(int itemsToSmelt, Map<String, Integer> remaining) {
-        // 200 ticks per smelt operation
-        int ticksNeeded = itemsToSmelt * 200;
-        
-        // Find best fuel available (longest burn time = min items needed)
-        String bestFuelId = null;
-        int bestBurnTime = 0;
-        int bestHave = 0;
-        
-        for (Map.Entry<String, Integer> entry : remaining.entrySet()) {
-            String itemId = entry.getKey();
-            int have = entry.getValue();
-            if (have <= 0) continue;
-            
-            ResourceLocation rl = ResourceLocation.tryParse(itemId);
-            if (rl == null || !BuiltInRegistries.ITEM.containsKey(rl)) continue;
-            
-            ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(rl));
-            int burnTime = net.minecraftforge.common.ForgeHooks.getBurnTime(stack, null);
-            
-            if (burnTime > bestBurnTime) {
-                bestBurnTime = burnTime;
-                bestFuelId = itemId;
-                bestHave = have;
-            }
-        }
-        
-        if (bestFuelId == null || bestBurnTime <= 0) {
-            // No fuel found - return a placeholder showing coal is needed
-            int coalNeeded = (int) Math.ceil((double) ticksNeeded / 1600); // Coal burns 1600 ticks
-        return new IngredientResult("minecraft:coal", coalNeeded, 0, coalNeeded, null, 1);  // slot 1 = fuel
-        }
-        
-        // Calculate how many of this fuel we need
-        int fuelNeeded = (int) Math.ceil((double) ticksNeeded / bestBurnTime);
-        int missing = Math.max(0, fuelNeeded - bestHave);
-        
-        // Consume fuel from remaining
-        if (fuelNeeded <= bestHave) {
-            remaining.merge(bestFuelId, -fuelNeeded, Integer::sum);
-        }
-        
-        return new IngredientResult(bestFuelId, fuelNeeded, bestHave, missing, null, 1);  // slot 1 = fuel
-    }
-    
-    private IngredientResult evaluateIngredient(Ingredient ingredient, int needed, int depth, Map<String, Integer> remaining) {
-        ItemStack[] items = ingredient.getItems();
-        
-        // Try each possible item for this ingredient
+    private IngredientResult evaluateIngredient(Ingredient ingredient, int neededPerOp, int depth, Map<String, Integer> remaining) {
+        ItemStack[] possibleItems = ingredient.getItems();
         IngredientResult bestResult = null;
         
-        for (ItemStack item : items) {
-            String itemId = item.getItem().builtInRegistryHolder().key().location().toString();
+        for (ItemStack itemStack : possibleItems) {
+            String itemId = itemStack.getItem().builtInRegistryHolder().key().location().toString();
             int have = remaining.getOrDefault(itemId, 0);
+            
+            // Logic: We need 'neededPerOp' for THIS single step of recursion.
+            // But wait, 'evaluateTree' calls this with needed=1 usually.
+            // The scaling happens in 'evaluateTree'.
+            
+            int needed = neededPerOp;
             int missing = Math.max(0, needed - have);
             
             if (missing == 0) {
-                // We have enough - consume and return
+                // We have it
                 remaining.merge(itemId, -needed, Integer::sum);
                 return new IngredientResult(itemId, needed, have, 0, null);
             }
             
-            // Try to craft the missing amount if we have depth left
+            // We are missing some. Can we craft/smelt it?
             EvaluatedTree subTree = null;
             if (depth < maxDepth && missing > 0) {
+                // RECURSIVE SEARCH
                 ResourceLocation rl = ResourceLocation.tryParse(itemId);
                 if (rl != null && BuiltInRegistries.ITEM.containsKey(rl)) {
-                    ItemStack targetStack = new ItemStack(BuiltInRegistries.ITEM.get(rl));
+                    ItemStack targetForSub = new ItemStack(BuiltInRegistries.ITEM.get(rl));
                     
-                    // Find ALL craftable recipes and pick the best one
-                    List<CraftingRecipe> subRecipes = RecipeLookup.findByOutput(level, targetStack, 10);
+                    // Find ALL recipes (Crafting + Smelting) for this missing item
+                    List<RecipeData> subCandidates = new ArrayList<>();
+                    RecipeLookup.findByOutput(level, targetForSub, 10).forEach(r -> subCandidates.add(new RecipeData(r)));
+                    RecipeLookup.findAllSmeltingByOutput(level, targetForSub, 10).forEach(r -> subCandidates.add(new RecipeData(r)));
                     
-                    // Evaluate each and pick the best (most complete)
-                    EvaluatedTree bestSubTree = null;
-                    for (CraftingRecipe subRecipe : subRecipes) {
+                    EvaluatedTree bestSub = null;
+                    for (RecipeData subRecipe : subCandidates) {
+                        // We need to produce 'missing' amount
                         EvaluatedTree evaluated = evaluateTree(subRecipe, missing, depth + 1, new HashMap<>(remaining));
-                        if (bestSubTree == null || 
-                            (evaluated.isComplete() && !bestSubTree.isComplete()) ||
-                            (!evaluated.isComplete() && !bestSubTree.isComplete() && 
-                             evaluated.getMissingCount() < bestSubTree.getMissingCount())) {
-                            bestSubTree = evaluated;
+                        
+                        if (bestSub == null || 
+                           (evaluated.isComplete() && !bestSub.isComplete()) ||
+                           (!evaluated.isComplete() && !bestSub.isComplete() && evaluated.getMissingCount() < bestSub.getMissingCount())) {
+                            bestSub = evaluated;
                         }
-                        // Stop if we found a complete solution
-                        if (evaluated.isComplete()) break;
+                        if (bestSub.isComplete()) break;
                     }
-                    subTree = bestSubTree;
+                    subTree = bestSub;
                 }
             }
             
-            // Calculate effective missing (considering sub-tree)
             int effectiveMissing = (subTree != null && subTree.isComplete()) ? 0 : missing;
-            
             IngredientResult result = new IngredientResult(itemId, needed, have, effectiveMissing, subTree);
             
             if (bestResult == null || result.getMissing() < bestResult.getMissing()) {
                 bestResult = result;
             }
             
-            // If we found a complete solution, use it
+            // Optimistic prune
             if (effectiveMissing == 0) {
-                remaining.merge(itemId, -have, Integer::sum); // Use what we have
-                return result;
+                remaining.merge(itemId, -have, Integer::sum);
+                return result; 
             }
         }
         
-        return bestResult != null ? bestResult : new IngredientResult(
-                items[0].getItem().builtInRegistryHolder().key().location().toString(), 
-                needed, 0, needed, null);
+        // Fallback if no items matched (shouldn't happen with valid ingredients)
+        if (bestResult == null && possibleItems.length > 0) {
+             String defaultId = possibleItems[0].getItem().builtInRegistryHolder().key().location().toString();
+             return new IngredientResult(defaultId, neededPerOp, 0, neededPerOp, null);
+        }
+        
+        return bestResult;
     }
     
+    private IngredientResult calculateFuelNeeded(int opsNeeded, Map<String, Integer> remaining) {
+        // Standard furnace logic: 200 ticks per op
+        int totalTicks = opsNeeded * 200;
+        
+        // Find best fuel in inventory
+        String bestFuelId = null;
+        int bestBurnTime = 0;
+        int bestHave = 0;
+        
+        for (Map.Entry<String, Integer> entry : remaining.entrySet()) {
+            if (entry.getValue() <= 0) continue;
+            ResourceLocation rl = ResourceLocation.tryParse(entry.getKey());
+            if (rl == null || !BuiltInRegistries.ITEM.containsKey(rl)) continue;
+            
+            int burnTime = net.minecraftforge.common.ForgeHooks.getBurnTime(
+                    new ItemStack(BuiltInRegistries.ITEM.get(rl)), null);
+            
+            if (burnTime > 0) {
+                // Heuristic: Prefer fuel that we have enough of, or longest burn time
+                if (burnTime > bestBurnTime) {
+                    bestBurnTime = burnTime;
+                    bestFuelId = entry.getKey();
+                    bestHave = entry.getValue();
+                }
+            }
+        }
+        
+        if (bestFuelId == null) {
+             // Fallback to coal calc
+             int coalBurn = 1600;
+             int coalNeeded = (int) Math.ceil((double) totalTicks / coalBurn);
+             return new IngredientResult("minecraft:coal", coalNeeded, 0, coalNeeded, null, 1);
+        }
+        
+        int needed = (int) Math.ceil((double) totalTicks / bestBurnTime);
+        int missing = Math.max(0, needed - bestHave);
+        
+        if (needed <= bestHave) {
+            remaining.merge(bestFuelId, -needed, Integer::sum);
+        }
+        
+        return new IngredientResult(bestFuelId, needed, bestHave, missing, null, 1);
+    }
+    
+    // ================== Data Classes ================== //
+    
     /**
-     * Represents an evaluated crafting tree with completeness info.
+     * Unified wrapper for CraftingRecipe and SmeltingRecipe.
      */
+    private static class RecipeData {
+        final String id;
+        final boolean isSmelting;
+        final CraftingRecipe craftingRecipe;
+        final SmeltingRecipe smeltingRecipe;
+        
+        RecipeData(CraftingRecipe r) {
+            this.id = r.getId().toString();
+            this.isSmelting = false;
+            this.craftingRecipe = r;
+            this.smeltingRecipe = null;
+        }
+        
+        RecipeData(SmeltingRecipe r) {
+            this.id = r.getId().toString();
+            this.isSmelting = true;
+            this.craftingRecipe = null;
+            this.smeltingRecipe = r;
+        }
+        
+        String getId() { return id; }
+        
+        ItemStack getResultItem(ServerLevel level) {
+            if (isSmelting) return smeltingRecipe.getResultItem(level.registryAccess());
+            return craftingRecipe.getResultItem(level.registryAccess());
+        }
+        
+        List<Ingredient> getIngredients() {
+            if (isSmelting) return smeltingRecipe.getIngredients();
+            return craftingRecipe.getIngredients();
+        }
+    }
+    
     public static class EvaluatedTree {
         private final String recipeId;
         private final String workstation;
@@ -308,9 +335,7 @@ public class CraftingTreeEvaluator {
             sb.append(String.format("\"output\": \"%s\", \"count\": %d}", output, count));
             return sb.toString();
         }
-        /**
-         * Flatten tree to ordered map of recipe ID -> craft count (sub-recipes first, main recipe last).
-         */
+        
         public java.util.LinkedHashMap<String, Integer> toFlattenedSteps() {
             java.util.LinkedHashMap<String, Integer> steps = new java.util.LinkedHashMap<>();
             collectSteps(steps);
@@ -318,31 +343,25 @@ public class CraftingTreeEvaluator {
         }
         
         private void collectSteps(java.util.LinkedHashMap<String, Integer> steps) {
-            // First, collect sub-recipes from ingredients
             for (IngredientResult ingredient : ingredients) {
                 if (ingredient.hasSubTree()) {
                     ingredient.getSubTree().collectSteps(steps);
                 }
             }
-            // Add this recipe with the count (merge if already present)
             steps.merge(recipeId, count, Integer::sum);
         }
     }
     
-    /**
-     * Result of evaluating an ingredient.
-     * Includes slot assignment for PROCESS tasks (0=input, 1=fuel).
-     */
     public static class IngredientResult {
         private final String itemId;
         private final int need;
         private final int have;
         private final int missing;
         private final EvaluatedTree subTree;
-        private final int targetSlot;  // -1 for crafting, 0=input, 1=fuel for furnace
+        private final int targetSlot;  // -1=mix, 0=input, 1=fuel
         
         public IngredientResult(String itemId, int need, int have, int missing, EvaluatedTree subTree) {
-            this(itemId, need, have, missing, subTree, -1);  // Default no slot
+            this(itemId, need, have, missing, subTree, -1);
         }
         
         public IngredientResult(String itemId, int need, int have, int missing, EvaluatedTree subTree, int targetSlot) {
@@ -362,31 +381,26 @@ public class CraftingTreeEvaluator {
         public EvaluatedTree getSubTree() { return subTree; }
         public int getTargetSlot() { return targetSlot; }
         
-        /**
-         * Merge with another result for the same item.
-         */
         public IngredientResult merge(IngredientResult other) {
-            // Keep subtree from whichever has one (prefer complete)
             EvaluatedTree mergedTree = this.subTree != null ? this.subTree : other.subTree;
             return new IngredientResult(
                     this.itemId,
                     this.need + other.need,
-                    this.have, // have doesn't stack
+                    this.have, 
                     this.missing + other.missing,
-                    mergedTree
+                    mergedTree,
+                    this.targetSlot // Preserve slot if possible
             );
         }
         
-        /**
-         * Scale this result by a multiplier.
-         */
         public IngredientResult scale(int multiplier) {
             return new IngredientResult(
                     this.itemId,
                     this.need * multiplier,
                     this.have,
                     this.missing * multiplier,
-                    this.subTree
+                    this.subTree,
+                    this.targetSlot
             );
         }
         
