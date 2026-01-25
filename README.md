@@ -8,6 +8,7 @@ Introduce more LLM callable functions and behaviors.
 - storage / crafting, based on storage manager.
 
 ## TODO
+- drop items to player
 - 拼音搜索
 - support crafting guides from storage manager.
 - better prompts
