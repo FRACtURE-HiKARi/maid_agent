@@ -4,20 +4,20 @@ import com.github.fracture_hikari.maid_agent.ai.AIChatCallback;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.UUID;
 
 /**
  * Queue of pending tasks for the maid.
- * Supports multiple LLM function calls executed sequentially.
+ * Supports task dependencies (DAG) using a PriorityQueue.
+ * Tasks with 0 reference count are prioritized.
  * Notifies LLM only after entire batch completes.
  */
 public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.TaskResult> {
     
-    private final Queue<PendingTask> tasks = new ArrayDeque<>();
+    // PriorityQueue to automatically surface ready tasks (refCount == 0)
+    private final PriorityQueue<PendingTask> tasks = new PriorityQueue<>();
     private EntityMaid maid;
     
     public TaskQueue(EntityMaid maid) {
@@ -27,7 +27,7 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
     
     /**
      * Add a task to the queue.
-     * @return Position in queue (1-indexed)
+     * @return Position in queue (approximation, as it's a heap)
      */
     public int enqueue(PendingTask task) {
         tasks.add(task);
@@ -35,11 +35,25 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
     }
     
     /**
-     * Get the current task without removing it.
+     * Add multiple tasks to the queue.
+     */
+    public int enqueue(java.util.List<PendingTask> newTasks) {
+        tasks.addAll(newTasks);
+        return tasks.size();
+    }
+    
+    /**
+     * Get any task that is ready to execute (refCount == 0).
+     * PriorityQueue guarantees the task with lowest refCount is at head.
      */
     @Nullable
     public PendingTask peek() {
-        return tasks.peek();
+        PendingTask head = tasks.peek();
+        // If the head has refCount > 0, then no tasks are ready (waiting on deps or cycle)
+        if (head != null && head.getReferenceCount() == 0) {
+            return head;
+        }
+        return null;
     }
     
     /**
@@ -64,10 +78,6 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
         super.clear();
     }
     
-    /**
-     * Check if queue has a similar task (same type, item, and storage).
-     * Used for duplicate detection warning (but doesn't prevent adding).
-     */
     public boolean hasSimilarTask(PendingTask.TaskType type, net.minecraft.world.item.ItemStack item, int storageIndex) {
         for (PendingTask task : tasks) {
             if (task.getType() == type && 
@@ -80,7 +90,6 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
         return false;
     }
     
-    // Helper to check storage position - compares by storage index via ViewedStorageMemory
     private net.minecraft.core.BlockPos getStoragePosForIndex(int storageIndex) {
         return maid.getBrain()
                 .getMemory(com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry.VIEWED_STORAGE.get())
@@ -90,14 +99,23 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
     }
     
     /**
-     * Mark current task as complete and move to next.
-     * @param success Whether the task succeeded
-     * @param message Result message
-     * @param actualCount Actual count processed
+     * Mark a specific task as complete.
+     * Decrements reference counts of dependent tasks.
      */
-    public void completeCurrentTask(boolean success, String message, int actualCount) {
-        PendingTask task = tasks.poll();
-        if (task != null) {
+    public void completeTask(PendingTask task, boolean success, String message, int actualCount) {
+        if (tasks.remove(task)) {
+            // Success: decrement refcounts of dependents and update them in PQ
+            for (PendingTask dependent : task.getDependents()) {
+                // Must remove and re-add to update priority in PQ
+                if (tasks.remove(dependent)) {
+                    dependent.decrementRefCount();
+                    tasks.add(dependent);
+                } else {
+                     // Dependent might not be in queue yet or already handled
+                     dependent.decrementRefCount();
+                }
+            }
+            
             completedResults.add(new TaskResult(
                 task.getType(),
                 com.github.fracture_hikari.maid_agent.util.ItemIdUtils.getId(task.getRequestedItem()),
@@ -107,18 +125,28 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
                 message
             ));
         }
+        if (tasks.isEmpty()) {
+            notifyBatchComplete();
+            clear();
+        }
     }
     
     /**
-     * Check if the entire batch is complete.
+     * Deprecated: Use completeTask(PendingTask, ...) instead.
+     * Completes the task returned by peek().
      */
+    @Deprecated
+    public void completeCurrentTask(boolean success, String message, int actualCount) {
+        PendingTask task = peek();
+        if (task != null) {
+            completeTask(task, success, message, actualCount);
+        }
+    }
+    
     public boolean isBatchComplete() {
         return tasks.isEmpty() && !completedResults.isEmpty();
     }
     
-    /**
-     * Get summary of all completed tasks for LLM notification.
-     */
     public String getBatchSummary() {
         if (completedResults.isEmpty()) {
             return "No tasks completed.";
@@ -155,19 +183,11 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
         
         return sb.toString().trim();
     }
-    
 
-
-    /**
-     * Get count of completed results.
-     */
     public int getCompletedCount() {
         return completedResults.size();
     }
     
-    /**
-     * Record of a completed task result.
-     */
     public record TaskResult(
         PendingTask.TaskType type,
         String itemId,

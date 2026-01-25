@@ -68,13 +68,17 @@ public class CraftingTreeEvaluator {
     /**
      * Unified evaluation for any recipe type.
      */
+    /**
+     * Unified evaluation for any recipe type.
+     */
     private EvaluatedTree evaluateTree(RecipeData recipe, int count, int depth, Map<String, Integer> remaining) {
         // Calculate how many operations we need
         // For crafting (e.g. 1 log -> 4 planks), need = ceil(target / output_per_craft)
         // For smelting (e.g. 1 ore -> 1 ingot), usually 1 to 1, but generic formula works.
-        ItemStack outputStack = recipe.getResultItem(level);
-        int outputCount = outputStack.getCount();
-        int opsNeeded = (int) Math.ceil((double) count / outputCount);
+        ItemStack outputStackTemplate = recipe.getResultItem(level);
+        int outputPerCraft = outputStackTemplate.getCount();
+        // opsNeeded = ceil(count / outputPerCraft)
+        int opsNeeded = (count + outputPerCraft - 1) / outputPerCraft;
         
         // Determine workstation
         String workstation = recipe.isSmelting ? "minecraft:furnace" : "minecraft:crafting_table";
@@ -112,7 +116,7 @@ public class CraftingTreeEvaluator {
             // If smelting, assign slot 0 (input)
             if (recipe.isSmelting) {
                 // Accessing private field or recreating? created constructor for copy
-                scaled = new IngredientResult(scaled.getItemId(), scaled.getNeed(), scaled.getHave(),
+                scaled = new IngredientResult(scaled.getItemStack(), scaled.getNeed(), scaled.getHave(),
                         scaled.getMissing(), scaled.getSubTree(), 0);
             }
             
@@ -129,11 +133,14 @@ public class CraftingTreeEvaluator {
             }
         }
         
+        // Output info
+        ItemStack resultStack = outputStackTemplate.copy();
+        resultStack.setCount(opsNeeded * outputPerCraft); // Total produced
+        
         return new EvaluatedTree(
                 recipe.getId(), 
                 workstation, 
-                outputStack.getItem().builtInRegistryHolder().key().location().toString(),
-                count, 
+                resultStack,
                 finalIngredients, 
                 totalMissing
         );
@@ -157,7 +164,9 @@ public class CraftingTreeEvaluator {
             if (missing == 0) {
                 // We have it
                 remaining.merge(itemId, -needed, Integer::sum);
-                return new IngredientResult(itemId, needed, have, 0, null);
+                ItemStack used = itemStack.copy();
+                used.setCount(needed);
+                return new IngredientResult(used, needed, have, 0, null);
             }
             
             // We are missing some. Can we craft/smelt it?
@@ -190,7 +199,11 @@ public class CraftingTreeEvaluator {
             }
             
             int effectiveMissing = (subTree != null && subTree.isComplete()) ? 0 : missing;
-            IngredientResult result = new IngredientResult(itemId, needed, have, effectiveMissing, subTree);
+            
+            ItemStack resultStack = itemStack.copy();
+            resultStack.setCount(needed);
+            
+            IngredientResult result = new IngredientResult(resultStack, needed, have, effectiveMissing, subTree);
             
             if (bestResult == null || result.getMissing() < bestResult.getMissing()) {
                 bestResult = result;
@@ -205,8 +218,9 @@ public class CraftingTreeEvaluator {
         
         // Fallback if no items matched (shouldn't happen with valid ingredients)
         if (bestResult == null && possibleItems.length > 0) {
-             String defaultId = possibleItems[0].getItem().builtInRegistryHolder().key().location().toString();
-             return new IngredientResult(defaultId, neededPerOp, 0, neededPerOp, null);
+             ItemStack defaultStack = possibleItems[0].copy();
+             defaultStack.setCount(neededPerOp);
+             return new IngredientResult(defaultStack, neededPerOp, 0, neededPerOp, null);
         }
         
         return bestResult;
@@ -220,14 +234,15 @@ public class CraftingTreeEvaluator {
         String bestFuelId = null;
         int bestBurnTime = 0;
         int bestHave = 0;
+        ItemStack bestFuelStack = null;
         
         for (Map.Entry<String, Integer> entry : remaining.entrySet()) {
             if (entry.getValue() <= 0) continue;
             ResourceLocation rl = ResourceLocation.tryParse(entry.getKey());
             if (rl == null || !BuiltInRegistries.ITEM.containsKey(rl)) continue;
             
-            int burnTime = net.minecraftforge.common.ForgeHooks.getBurnTime(
-                    new ItemStack(BuiltInRegistries.ITEM.get(rl)), null);
+            ItemStack candidate = new ItemStack(BuiltInRegistries.ITEM.get(rl));
+            int burnTime = net.minecraftforge.common.ForgeHooks.getBurnTime(candidate, null);
             
             if (burnTime > 0) {
                 // Heuristic: Prefer fuel that we have enough of, or longest burn time
@@ -235,6 +250,7 @@ public class CraftingTreeEvaluator {
                     bestBurnTime = burnTime;
                     bestFuelId = entry.getKey();
                     bestHave = entry.getValue();
+                    bestFuelStack = candidate;
                 }
             }
         }
@@ -243,7 +259,8 @@ public class CraftingTreeEvaluator {
              // Fallback to coal calc
              int coalBurn = 1600;
              int coalNeeded = (int) Math.ceil((double) totalTicks / coalBurn);
-             return new IngredientResult("minecraft:coal", coalNeeded, 0, coalNeeded, null, 1);
+             ItemStack coal = new ItemStack(net.minecraft.world.item.Items.COAL, coalNeeded);
+             return new IngredientResult(coal, coalNeeded, 0, coalNeeded, null, 1);
         }
         
         int needed = (int) Math.ceil((double) totalTicks / bestBurnTime);
@@ -253,7 +270,10 @@ public class CraftingTreeEvaluator {
             remaining.merge(bestFuelId, -needed, Integer::sum);
         }
         
-        return new IngredientResult(bestFuelId, needed, bestHave, missing, null, 1);
+        ItemStack fuelStack = bestFuelStack.copy();
+        fuelStack.setCount(needed);
+        
+        return new IngredientResult(fuelStack, needed, bestHave, missing, null, 1);
     }
     
     // ================== Data Classes ================== //
@@ -297,17 +317,15 @@ public class CraftingTreeEvaluator {
     public static class EvaluatedTree {
         private final String recipeId;
         private final String workstation;
-        private final String output;
-        private final int count;
+        private final ItemStack output;
         private final List<IngredientResult> ingredients;
         private final int missingCount;
         
-        public EvaluatedTree(String recipeId, String workstation, String output, 
-                             int count, List<IngredientResult> ingredients, int missingCount) {
+        public EvaluatedTree(String recipeId, String workstation, ItemStack output, 
+                             List<IngredientResult> ingredients, int missingCount) {
             this.recipeId = recipeId;
             this.workstation = workstation;
-            this.output = output;
-            this.count = count;
+            this.output = output.copy();
             this.ingredients = ingredients;
             this.missingCount = missingCount;
         }
@@ -316,6 +334,8 @@ public class CraftingTreeEvaluator {
         public int getMissingCount() { return missingCount; }
         public String getRecipeId() { return recipeId; }
         public String getWorkstation() { return workstation; }
+        public ItemStack getOutput() { return output; }
+        public int getCount() { return output.getCount(); }
         public List<IngredientResult> getIngredients() { return ingredients; }
         
         public String toJson() {
@@ -332,7 +352,8 @@ public class CraftingTreeEvaluator {
                 sb.append(ingredients.get(i).toJson());
             }
             sb.append("], ");
-            sb.append(String.format("\"output\": \"%s\", \"count\": %d}", output, count));
+            sb.append(String.format("\"output\": \"%s\", \"count\": %d}", 
+                    output.getItem().builtInRegistryHolder().key().location().toString(), output.getCount()));
             return sb.toString();
         }
         
@@ -348,24 +369,25 @@ public class CraftingTreeEvaluator {
                     ingredient.getSubTree().collectSteps(steps);
                 }
             }
-            steps.merge(recipeId, count, Integer::sum);
+            steps.merge(recipeId, output.getCount(), Integer::sum);
         }
     }
     
     public static class IngredientResult {
-        private final String itemId;
+        private final ItemStack itemStack;
         private final int need;
         private final int have;
         private final int missing;
         private final EvaluatedTree subTree;
         private final int targetSlot;  // -1=mix, 0=input, 1=fuel
         
-        public IngredientResult(String itemId, int need, int have, int missing, EvaluatedTree subTree) {
-            this(itemId, need, have, missing, subTree, -1);
+        public IngredientResult(ItemStack itemStack, int need, int have, int missing, EvaluatedTree subTree) {
+            this(itemStack, need, have, missing, subTree, -1);
         }
         
-        public IngredientResult(String itemId, int need, int have, int missing, EvaluatedTree subTree, int targetSlot) {
-            this.itemId = itemId;
+        public IngredientResult(ItemStack itemStack, int need, int have, int missing, EvaluatedTree subTree, int targetSlot) {
+            this.itemStack = itemStack.copy();
+            this.itemStack.setCount(need); // Ensure stack count matches needed (conceptually)
             this.need = need;
             this.have = have;
             this.missing = missing;
@@ -373,7 +395,8 @@ public class CraftingTreeEvaluator {
             this.targetSlot = targetSlot;
         }
         
-        public String getItemId() { return itemId; }
+        public String getItemId() { return itemStack.getItem().builtInRegistryHolder().key().location().toString(); }
+        public ItemStack getItemStack() { return itemStack; }
         public int getNeed() { return need; }
         public int getHave() { return have; }
         public int getMissing() { return missing; }
@@ -383,8 +406,10 @@ public class CraftingTreeEvaluator {
         
         public IngredientResult merge(IngredientResult other) {
             EvaluatedTree mergedTree = this.subTree != null ? this.subTree : other.subTree;
+            ItemStack mergedStack = this.itemStack.copy();
+            mergedStack.setCount(this.need + other.need);
             return new IngredientResult(
-                    this.itemId,
+                    mergedStack,
                     this.need + other.need,
                     this.have, 
                     this.missing + other.missing,
@@ -394,8 +419,10 @@ public class CraftingTreeEvaluator {
         }
         
         public IngredientResult scale(int multiplier) {
+            ItemStack scaledStack = this.itemStack.copy();
+            scaledStack.setCount(this.need * multiplier);
             return new IngredientResult(
-                    this.itemId,
+                    scaledStack,
                     this.need * multiplier,
                     this.have,
                     this.missing * multiplier,
@@ -407,7 +434,7 @@ public class CraftingTreeEvaluator {
         public String toJson() {
             StringBuilder sb = new StringBuilder();
             sb.append(String.format("{\"item\": \"%s\", \"need\": %d, \"have\": %d, \"missing\": %d",
-                    itemId, need, have, missing));
+                    getItemId(), need, have, missing));
             if (subTree != null) {
                 sb.append(", \"craft_from\": ").append(subTree.toJson());
             }

@@ -30,8 +30,7 @@ public class WorkBlockMoveTask extends AbstractMoveTask {
     protected boolean shouldMoveTo(ServerLevel level, EntityMaid maid, BlockPos pos) {
         Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
         if (taskOpt.isEmpty()) return false;
-        Optional<WorkBlockTarget> target = taskOpt.get().getTarget();
-        return target.isPresent() && pos.equals(target.get().getPos());
+        return taskOpt.get().isValidWorkBlock(level, pos);
     }
 
     @Override
@@ -44,22 +43,17 @@ public class WorkBlockMoveTask extends AbstractMoveTask {
         currentMove = taskOpt.get();
 
         if (currentMove.getTarget().isEmpty()) return false;
+        
+        // Log intent (target pos might be null, which is fine for generic search)
         BlockPos pos = currentMove.getTarget().get().getPos();
-        MaidAgent.LOGGER.info("TaskMoveTask: Setting up movement for {} to {}", currentMove.getType(), pos);
+        String targetStr = (pos != null) ? pos.toShortString() : "generic:" + currentMove.getTarget().get().getType();
+        MaidAgent.LOGGER.info("TaskMoveTask: Setting up movement for {} to {}", currentMove.getType(), targetStr);
         return true;
     }
 
     @Override
     protected void start(ServerLevel level, EntityMaid maid, long gameTime) {
         super.start(level, maid, gameTime);
-        Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
         this.searchForDestination(level, maid);
-        taskOpt.ifPresent(task -> {
-            if (task.getTarget().isPresent()) {
-                MaidAgent.LOGGER.info("StorageMoveTask: move to storage at {}", task.getTarget().get().getPos());
-            } else {
-                MaidAgent.LOGGER.info("StorageMoveTask: task target is null type={}", task.getType());
-            }
-        });
     }
 }

@@ -48,67 +48,66 @@ public class CraftingWorkTask extends AbstractWorkTask {
 
         ItemStack targetItem = task.getRequestedItem().copy();
         if (targetItem.isEmpty()) {
-            MemoryUtil.updateTasks(maid, false, "Failed to craft: unknown item " + ItemIdUtils.getId(targetItem));
+            MemoryUtil.updateTasks(maid, task, false, "Failed to craft: unknown item " + ItemIdUtils.getId(targetItem));
             return;
         }
         
-        // Get pre-computed crafting steps (sub-recipes first, main recipe last)
-        java.util.LinkedHashMap<String, Integer> craftingSteps = task.getCraftingSteps();
-        if (craftingSteps == null || craftingSteps.isEmpty()) {
-            // Fallback: just use the main recipe
-            craftingSteps = new java.util.LinkedHashMap<>();
-            craftingSteps.put(task.getRecipeId(), task.getCount());
+        String recipeId = task.getRecipeId();
+        if (recipeId == null || recipeId.isEmpty()) {
+            MemoryUtil.updateTasks(maid, task, false, "Failed to craft: no recipe ID specified");
+            return;
+        }
+
+        // Lookup specific recipe
+        Optional<CraftingRecipe> recipeOpt = RecipeLookup.findById(level, recipeId);
+        if (recipeOpt.isEmpty()) {
+            MemoryUtil.updateTasks(maid, task, false, "Recipe not found: " + recipeId);
+            return;
         }
         
+        CraftingRecipe recipe = recipeOpt.get();
         IItemHandler maidInv = maid.getAvailableInv(false);
         int finalCraftCount = 0;
+        int neededCrafts = task.getCount();
         
-        // Execute each step in order (sub-recipes first)
-        for (Map.Entry<String, Integer> step : craftingSteps.entrySet()) {
-            String stepRecipeId = step.getKey();
-            int neededCrafts = step.getValue();
+        // Craft exactly the needed amount
+        // Note: For task graph, inputs should already be available from dependencies.
+        
+        while (finalCraftCount < neededCrafts && hasIngredients(maidInv, recipe)) {
+            consumeIngredients(maidInv, recipe);
+            ItemStack result = recipe.getResultItem(level.registryAccess()).copy();
             
-            // Use pre-calculated recipe ID - no new recipe discovery
-            Optional<CraftingRecipe> stepRecipe = RecipeLookup.findById(level, stepRecipeId);
+            // Handle output count (e.g. recipe produces 4 planks)
+            // But task.getCount() usually refers to number of OUTPUT items needed?
+            // "count (integer, optional): Number of items to craft."
+            // In CraftItemFunction logic: "opsNeeded = ceil(count / outputCount)"
+            // PendingTask count is 'count' requested.
+            // If recipe output is > 1, we might overproduce.
+            // The loop condition should probably track output items produced?
+            // But logic says `targetItem.setCount(result.getCount() * count)` in CraftItemFunction (createSingleTask).
+            // Actually, in generateTaskGraph: `ItemStack targetItem = ItemIdUtils.createStack(tree.getOutput(), tree.getCount());`
+            // `tree.getCount()` is the TOTAL needed.
+            // So PendingTask count is TOTAL items.
+            // Recipe output count matters.
             
-            if (stepRecipe.isEmpty()) {
-                MemoryUtil.updateTasks(maid, false, "Recipe not found: " + stepRecipeId);
-                return;
+            // Optimization: check how many items this craft produces
+            int outputPerCraft = result.getCount();
+            
+            // Add to inventory
+            for (int i = 0; i < maidInv.getSlots(); i++) {
+                result = maidInv.insertItem(i, result, false);
+                if (result.isEmpty()) break;
             }
             
-            CraftingRecipe recipe = stepRecipe.get();
-            boolean isMainRecipe = stepRecipeId.equals(task.getRecipeId());
-            
-            // Craft exactly the needed amount
-            int craftCountForStep = 0;
-            
-            while (craftCountForStep < neededCrafts && hasIngredients(maidInv, recipe)) {
-                consumeIngredients(maidInv, recipe);
-                ItemStack result = recipe.getResultItem(level.registryAccess()).copy();
-                for (int i = 0; i < maidInv.getSlots(); i++) {
-                    result = maidInv.insertItem(i, result, false);
-                    if (result.isEmpty()) break;
-                }
-                craftCountForStep++;
-                
-                if (isMainRecipe) {
-                    finalCraftCount++;
-                }
-            }
-            
-            if (craftCountForStep > 0) {
-                MaidAgent.LOGGER.info("Crafted {} of {} (step: {}, needed: {})", 
-                        craftCountForStep, recipe.getResultItem(level.registryAccess()).getItem(), 
-                        stepRecipeId, neededCrafts);
-            }
+            finalCraftCount += outputPerCraft;
         }
         
         if (finalCraftCount > 0) {
             task.setActualAccount(finalCraftCount);
-            MemoryUtil.updateTasks(maid, true, "craft successful.");
+            MemoryUtil.updateTasks(maid, task, true, "craft successful.");
         } else {
             String msg = "Could not craft " + getItemName(targetItem) + " (missing ingredients)";
-            MemoryUtil.updateTasks(maid, false, msg);
+            MemoryUtil.updateTasks(maid, task, false, msg);
         }
     }
     

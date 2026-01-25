@@ -43,26 +43,26 @@ public class StorageWorkTask extends AbstractWorkTask {
         PendingTask task = taskOpt.get();
         WorkBlockTarget target = task.getTarget().orElse(null);
         if (target == null) {
-            MemoryUtil.updateTasks(maid, false, "no target storage found");
+            MemoryUtil.updateTasks(maid, task, false, "no target storage found");
             return;
         }
 
         ItemStack targetItem = task.getRequestedItem().copy();
         String targetItemId = ItemIdUtils.getId(targetItem);
         if (targetItem.isEmpty()) {
-            MemoryUtil.updateTasks(maid, false, "Failed to fetch: unknown item " + targetItemId);
+            MemoryUtil.updateTasks(maid, task, false, "Failed to fetch: unknown item " + targetItemId);
             return;
         }
 
         BlockEntity be = level.getBlockEntity(target.getPos());
         if (be == null) {
-            MemoryUtil.updateTasks(maid, false, "Failed to fetch: no storage at " + target.getPos() + " for " + targetItemId);
+            MemoryUtil.updateTasks(maid, task, false, "Failed to fetch: no storage at " + target.getPos() + " for " + targetItemId);
             return;
         }
 
         IItemHandler storage = be.getCapability(ForgeCapabilities.ITEM_HANDLER, target.getSideOrNull()).orElse(null);
         if (storage == null) {
-            MemoryUtil.updateTasks(maid, false, "Failed to fetch: storage has no inventory");
+            MemoryUtil.updateTasks(maid, task, false, "Failed to fetch: storage has no inventory");
             return;
         }
 
@@ -87,12 +87,12 @@ public class StorageWorkTask extends AbstractWorkTask {
             String action = isFetch ? "Fetched" : "Stored";
             String location = isFetch ? "from storage" : "in storage";
             String msg = String.format("%s %d %s %s", action, amountModified, itemName, location);
-            MemoryUtil.updateTasks(maid, true, msg);
+            MemoryUtil.updateTasks(maid, task, true, msg);
         } else {
             // Generalized failure message
             String reason = isFetch ? "(not found in storage)" : "(item not in inventory or storage full)";
             String msg =  String.format("Could not %s any %s %s", isFetch ? "fetch" : "store", itemName, reason);
-            MemoryUtil.updateTasks(maid, false, msg);
+            MemoryUtil.updateTasks(maid, task, false, msg);
         }
     }
 }

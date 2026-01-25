@@ -61,17 +61,17 @@ public class InsertWorkTask extends AbstractWorkTask {
             return;
         }
 
-        BlockPos machinePos = targetOpt.get().getPos();
+        BlockPos machinePos = getWorkBlockPos(level, maid, task);
         BlockEntity be = level.getBlockEntity(machinePos);
         if (!(be instanceof AbstractFurnaceBlockEntity furnace)) {
-            MemoryUtil.updateTasks(maid, false, "Failed to process: block is not a furnace");
+            MemoryUtil.updateTasks(maid, task, false, "Failed to process: block is not a furnace");
             return;
         }
         
         // Get pre-evaluated slot mappings from task (set by CraftItemFunction)
         List<SlotMapping> slotMappings = task.getSlotMappings();
         if (slotMappings == null || slotMappings.isEmpty()) {
-            MemoryUtil.updateTasks(maid, false, "Failed to process: no slot mappings specified in task");
+            MemoryUtil.updateTasks(maid, task, false, "Failed to process: no slot mappings specified in task");
             return;
         }
         
@@ -99,7 +99,7 @@ public class InsertWorkTask extends AbstractWorkTask {
         }
         
         if (inputInserted == 0) {
-            MemoryUtil.updateTasks(maid, false, "no ingredients.");
+            MemoryUtil.updateTasks(maid, task, false, "no ingredients.");
             return;
         }
         
@@ -114,16 +114,16 @@ public class InsertWorkTask extends AbstractWorkTask {
         
         int estimatedTicks = inputInserted * TICKS_PER_SMELT;
         // Output slot for furnace is 2
-        ProcessingJob job = new ProcessingJob(machinePos, FURNACE_OUTPUT_SLOT, expectedOutput);
+        ProcessingJob job = new ProcessingJob(maid, machinePos, FURNACE_OUTPUT_SLOT, expectedOutput, task);
         memory.addJob(job);
         
         MaidAgent.LOGGER.info("Started processing job: {} input ({}), {} fuel, estimated {} ticks", 
                 inputInserted, inputItemId, fuelInserted, estimatedTicks);
         
         task.setActualAccount(inputInserted);
-        String msg = String.format("Inserted %d items + %d fuel into furnace. Processing will take ~%d seconds.",
-                inputInserted, fuelInserted, estimatedTicks / 20);
-        MemoryUtil.updateTasks(maid, true, msg);
+        //String msg = String.format("Inserted %d items + %d fuel into furnace. Processing will take ~%d seconds.",
+        //        inputInserted, fuelInserted, estimatedTicks / 20);
+        //MemoryUtil.updateTasks(maid, task, true, msg);
     }
     
     /**

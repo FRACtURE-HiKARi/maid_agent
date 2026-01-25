@@ -101,14 +101,40 @@ public abstract class AbstractWorkTask extends MaidCheckRateTask {
         return stack.getHoverName().getString();
     }
 
+    protected BlockPos getWorkBlockPos(ServerLevel level, EntityMaid maid, PendingTask task) {
+        WorkBlockTarget target = task.getTarget().get();
+        BlockPos targetPos = target.getPos();
+
+        // If target pos is generic (null), try to use the position the maid actually walked to
+        if (targetPos == null) {
+            var memOpt =
+                    maid.getBrain().getMemory(InitEntities.TARGET_POS.get());
+            if (memOpt.isPresent()) {
+                BlockPos memPos = BlockPos.containing(memOpt.get().currentPosition());
+                if (task.isValidWorkBlock(level, memPos)) {
+                    targetPos = memPos;
+                }
+            }
+        }
+        return targetPos;
+    }
+
     protected boolean checkTaskMemory(ServerLevel level, EntityMaid maid, Predicate<PendingTask> predicate) {
         Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
         if (taskOpt.isEmpty()) return false;
         PendingTask task = taskOpt.get();
+        if (!predicate.test(task)) return false;
+
         if (task.getTarget().isPresent()) {
             WorkBlockTarget target = task.getTarget().get();
-            helper = new SimulateTargetInteractHelper(maid, target.getPos(), target.getSideOrNull(), level);
+            BlockPos targetPos = getWorkBlockPos(level, maid, task);
+
+            if (targetPos != null) {
+                helper = new SimulateTargetInteractHelper(maid, targetPos, target.getSideOrNull(), level);
+            } else {
+                return false;
+            }
         }
-        return predicate.test(task);
+        return true;
     }
 }

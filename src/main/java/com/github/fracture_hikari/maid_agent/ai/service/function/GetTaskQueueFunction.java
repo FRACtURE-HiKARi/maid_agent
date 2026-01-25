@@ -25,7 +25,8 @@ public class GetTaskQueueFunction implements IFunctionCall<GetTaskQueueFunction.
     private static final String FUNCTION_DESC = """
             Check the status of the maid's task queue.
             Returns pending tasks, current task, and recently completed results.
-            Use this to check progress when the maid is busy.""";
+            Use this to check progress when the maid is busy, but don't use it to poll for tasks done.
+            You will be notified later for finished tasks.""";
 
     @Override
     public String getId() {

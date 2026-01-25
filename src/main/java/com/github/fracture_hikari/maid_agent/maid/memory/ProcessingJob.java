@@ -1,8 +1,11 @@
 package com.github.fracture_hikari.maid_agent.maid.memory;
 
+import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
+import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 
+import javax.swing.text.html.parser.Entity;
 import java.util.UUID;
 
 /**
@@ -17,16 +20,24 @@ public class ProcessingJob {
     private final int outputSlot;            // Slot to read output from
     private final ItemStack expectedOutput;
     private int collectedCount;              // How many items collected so far
+    private PendingTask blockedTask;
+    private EntityMaid maid;
     
     /**
      * Create a new processing job.
      */
-    public ProcessingJob(BlockPos outputEndpoint, int outputSlot, ItemStack expectedOutput) {
+    public ProcessingJob(EntityMaid maid, BlockPos outputEndpoint, int outputSlot, ItemStack expectedOutput) {
+        this(maid, outputEndpoint, outputSlot, expectedOutput, null);
+    }
+
+    public ProcessingJob(EntityMaid maid, BlockPos outputEndpoint, int outputSlot, ItemStack expectedOutput, PendingTask blockedTask) {
         this.id = UUID.randomUUID().toString().substring(0, 8);
         this.outputEndpoint = outputEndpoint;
         this.outputSlot = outputSlot;
         this.expectedOutput = expectedOutput.copy();
         this.collectedCount = 0;
+        this.blockedTask = blockedTask;
+        this.maid = maid;
     }
     
     public String getId() {
@@ -86,5 +97,11 @@ public class ProcessingJob {
     public String toString() {
         return String.format("ProcessingJob{id=%s, output=%s, collected=%d/%d}",
                 id, expectedOutput.getItem(), collectedCount, expectedOutput.getCount());
+    }
+
+    public void updateBlockedTask(boolean success, String message) {
+        if (blockedTask != null) {
+            MemoryUtil.updateTasks(maid, blockedTask, success, message + "Job Detail: " + toString());
+        }
     }
 }

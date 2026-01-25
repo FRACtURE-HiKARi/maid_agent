@@ -34,16 +34,15 @@ public class MemoryUtil {
         return memoryOpt.get().getOutputEndpoints();
     }
 
-    public static void updateTasks(EntityMaid maid, boolean success, String message) {
-
+    public static void updateTasks(EntityMaid maid, PendingTask task, boolean success, String message) {
         Optional<TaskQueue> queueOpt = maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get());
         queueOpt.ifPresent(queue -> {
             if (success) {
-                MaidAgent.LOGGER.info("task {} success with {}", queue.peek(), message);
+                MaidAgent.LOGGER.info("task {} success with {}", task, message);
             } else {
-                MaidAgent.LOGGER.warn("task {} fails with {}", queue.peek(), message);
+                MaidAgent.LOGGER.warn("task {} fails with {}", task, message);
             }
-            queue.completeCurrentTask(success, message, Objects.requireNonNull(queue.peek()).getActualCount());
+            queue.completeTask(task, success, message, task.getActualCount());
         });
     }
 

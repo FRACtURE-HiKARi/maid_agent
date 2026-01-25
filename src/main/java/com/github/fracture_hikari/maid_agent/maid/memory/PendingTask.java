@@ -2,6 +2,7 @@ package com.github.fracture_hikari.maid_agent.maid.memory;
 
 import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
@@ -11,7 +12,7 @@ import java.util.Optional;
  * Represents a pending task for the maid to execute.
  * Set by LLM function calls, consumed by behaviors.
  */
-public class PendingTask {
+public class PendingTask implements Comparable<PendingTask> {
     
     public enum TaskType {
         FETCH,   // Get items from storage
@@ -20,12 +21,33 @@ public class PendingTask {
         PROCESS  // Two-phase: insert ingredients → wait → collect output
     }
 
-    public enum TaskStatus {
-        PENDING,    // Task just created, waiting to start
-        MOVING,     // Maid is walking to target
-        WORKING,    // Maid is interacting with target
-        COMPLETED,  // Task finished successfully
-        FAILED      // Task failed
+    // TaskStatus deprecated and removed
+
+    // Dependency Management
+    private final java.util.List<PendingTask> dependents = new java.util.ArrayList<>();
+    private int referenceCount = 0;
+
+    public void addDependent(PendingTask dependent) {
+        this.dependents.add(dependent);
+        dependent.incrementRefCount();
+    }
+
+    public java.util.List<PendingTask> getDependents() {
+        return dependents;
+    }
+
+    public void incrementRefCount() {
+        this.referenceCount++;
+    }
+
+    public void decrementRefCount() {
+        if (this.referenceCount > 0) {
+            this.referenceCount--;
+        }
+    }
+
+    public int getReferenceCount() {
+        return referenceCount;
     }
     
     public enum WorkstationType {
@@ -44,8 +66,7 @@ public class PendingTask {
     private WorkstationType workstationType;  // For CRAFT tasks
     @Nullable
     private String recipeId;  // For CRAFT tasks - main recipe
-    @Nullable
-    private java.util.LinkedHashMap<String, Integer> craftingSteps;  // Ordered recipe ID -> craft count (sub-recipes first)
+
     @Nullable
     private java.util.List<SlotMapping> slotMappings;  // Slot mappings for PROCESS tasks
 
@@ -60,7 +81,6 @@ public class PendingTask {
         this.actualCount = -1;
         this.workstationType = null;
         this.recipeId = null;
-        this.craftingSteps = null;
         this.slotMappings = null;
     }
 
@@ -103,23 +123,28 @@ public class PendingTask {
     public String getRecipeId() {
         return recipeId;
     }
-    
+
     public void setRecipeId(@Nullable String recipeId) {
         this.recipeId = recipeId;
     }
-    
-    @Nullable
-    public java.util.LinkedHashMap<String, Integer> getCraftingSteps() {
-        return craftingSteps;
-    }
-    
-    public void setCraftingSteps(@Nullable java.util.LinkedHashMap<String, Integer> craftingSteps) {
-        this.craftingSteps = craftingSteps;
-    }
-    
+
     @Nullable
     public java.util.List<SlotMapping> getSlotMappings() {
         return slotMappings;
+    }
+
+    // Changing signature to include level as per logic requirement
+    public boolean isValidWorkBlock(net.minecraft.server.level.ServerLevel level, BlockPos pos) {
+        if (target == null) return false;
+        
+        if (target.getPos() != null) {
+            return target.getPos().equals(pos);
+        } else {
+            // Target is generic (null pos), check if block at 'pos' matches 'target.type'
+            net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
+            net.minecraft.resources.ResourceLocation blockId = net.minecraftforge.registries.ForgeRegistries.BLOCKS.getKey(state.getBlock());
+            return blockId != null && blockId.equals(target.getType());
+        }
     }
     
     public void setSlotMappings(@Nullable java.util.List<SlotMapping> slotMappings) {
@@ -128,7 +153,12 @@ public class PendingTask {
 
     @Override
     public String toString() {
-        return String.format("PendingTask{type=%s, item=%s, count=%d, actual=%d}",
-                type, com.github.fracture_hikari.maid_agent.util.ItemIdUtils.getId(requestedItem), requestedItem.getCount(), actualCount);
+        return String.format("PendingTask{type=%s, item=%s, count=%d, actual=%d, refCount=%d}",
+                type, com.github.fracture_hikari.maid_agent.util.ItemIdUtils.getId(requestedItem), requestedItem.getCount(), actualCount, referenceCount);
+    }
+
+    @Override
+    public int compareTo(PendingTask other) {
+        return Integer.compare(this.referenceCount, other.referenceCount);
     }
 }

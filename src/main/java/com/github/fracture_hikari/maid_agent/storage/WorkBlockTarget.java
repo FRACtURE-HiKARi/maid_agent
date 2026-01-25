@@ -20,17 +20,17 @@ public class WorkBlockTarget {
     @Nullable
     private final Direction side;
 
-    public WorkBlockTarget(ResourceLocation type, BlockPos pos) {
+    public WorkBlockTarget(ResourceLocation type, @Nullable BlockPos pos) {
         this(type, pos, (Direction) null);
     }
 
-    public WorkBlockTarget(ResourceLocation type, @NotNull BlockPos pos, @Nullable Direction side) {
+    public WorkBlockTarget(ResourceLocation type, @Nullable BlockPos pos, @Nullable Direction side) {
         this.type = type;
         this.pos = pos;
         this.side = side;
     }
     
-    public WorkBlockTarget(ResourceLocation type, BlockPos pos, Optional<Direction> side) {
+    public WorkBlockTarget(ResourceLocation type, @Nullable BlockPos pos, Optional<Direction> side) {
         this(type, pos, side.orElse(null));
     }
 
@@ -38,7 +38,7 @@ public class WorkBlockTarget {
         return type;
     }
 
-    @NotNull
+    @Nullable
     public BlockPos getPos() {
         return pos;
     }
@@ -55,14 +55,16 @@ public class WorkBlockTarget {
     /**
      * Create a new target with the same type but different position/side.
      */
-    public WorkBlockTarget withPos(BlockPos newPos, @Nullable Direction newSide) {
+    public WorkBlockTarget withPos(@Nullable BlockPos newPos, @Nullable Direction newSide) {
         return new WorkBlockTarget(type, newPos, newSide);
     }
 
     public CompoundTag toNbt() {
         CompoundTag nbt = new CompoundTag();
         nbt.putString("type", type.toString());
-        nbt.putLong("pos", pos.asLong());
+        if (pos != null) {
+            nbt.putLong("pos", pos.asLong());
+        }
         if (side != null) {
             nbt.putString("side", side.getName());
         }
@@ -71,7 +73,7 @@ public class WorkBlockTarget {
 
     public static WorkBlockTarget fromNbt(CompoundTag nbt) {
         ResourceLocation type = ResourceLocation.parse(nbt.getString("type"));
-        BlockPos pos = BlockPos.of(nbt.getLong("pos"));
+        BlockPos pos = nbt.contains("pos") ? BlockPos.of(nbt.getLong("pos")) : null;
         Direction side = nbt.contains("side") ? Direction.byName(nbt.getString("side")) : null;
         return new WorkBlockTarget(type, pos, side);
     }
@@ -93,9 +95,10 @@ public class WorkBlockTarget {
 
     @Override
     public String toString() {
-        return String.format("Storage[%s] at [%d, %d, %d]%s",
+        String posStr = (pos != null) ? String.format(" at [%d, %d, %d]", pos.getX(), pos.getY(), pos.getZ()) : " (any)";
+        return String.format("Storage[%s]%s%s",
                 type,
-                pos.getX(), pos.getY(), pos.getZ(),
+                posStr,
                 side != null ? " (" + side.getName() + ")" : "");
     }
 }
