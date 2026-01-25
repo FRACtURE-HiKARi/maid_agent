@@ -22,7 +22,7 @@ import java.util.Set;
 public class CollectMoveTask extends AbstractMoveTask {
 
     public CollectMoveTask() {
-        super(2000);
+        super(200);
     }
 
     @Override

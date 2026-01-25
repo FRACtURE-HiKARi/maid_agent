@@ -28,7 +28,7 @@ public abstract class AbstractJobContainerWithAICallback<T> {
      * Notify LLM with batch summary.
      */
     public void notifyBatchComplete() {
-        callback.notifyTaskComplete(getBatchSummary());
+        callback.notifyTaskComplete(getBatchSummary() + "\nA batch of tasks are done. you may proceed your work.");
     }
 
     /**

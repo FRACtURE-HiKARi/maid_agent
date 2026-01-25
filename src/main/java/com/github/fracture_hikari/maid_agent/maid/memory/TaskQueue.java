@@ -1,12 +1,11 @@
 package com.github.fracture_hikari.maid_agent.maid.memory;
 
-import com.github.fracture_hikari.maid_agent.ai.AIChatCallback;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
+import net.minecraft.core.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.PriorityQueue;
-import java.util.Queue;
-import java.util.UUID;
 
 /**
  * Queue of pending tasks for the maid.
@@ -37,9 +36,8 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
     /**
      * Add multiple tasks to the queue.
      */
-    public int enqueue(java.util.List<PendingTask> newTasks) {
+    public void enqueue(List<PendingTask> newTasks) {
         tasks.addAll(newTasks);
-        return tasks.size();
     }
     
     /**
@@ -48,10 +46,11 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
      */
     @Nullable
     public PendingTask peek() {
-        PendingTask head = tasks.peek();
-        // If the head has refCount > 0, then no tasks are ready (waiting on deps or cycle)
-        if (head != null && head.getReferenceCount() == 0) {
-            return head;
+        var copy = new PriorityQueue<>(tasks);
+        for (PendingTask task: copy) {
+            if (task.getReferenceCount() == 0 && !task.isBlocked()) {
+                return task;
+            }
         }
         return null;
     }
@@ -90,7 +89,7 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
         return false;
     }
     
-    private net.minecraft.core.BlockPos getStoragePosForIndex(int storageIndex) {
+    private BlockPos getStoragePosForIndex(int storageIndex) {
         return maid.getBrain()
                 .getMemory(com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry.VIEWED_STORAGE.get())
                 .flatMap(mem -> mem.getStorageByIndex(storageIndex))
@@ -107,6 +106,7 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
             // Success: decrement refcounts of dependents and update them in PQ
             for (PendingTask dependent : task.getDependents()) {
                 // Must remove and re-add to update priority in PQ
+                // TODO: lazy insertion?
                 if (tasks.remove(dependent)) {
                     dependent.decrementRefCount();
                     tasks.add(dependent);

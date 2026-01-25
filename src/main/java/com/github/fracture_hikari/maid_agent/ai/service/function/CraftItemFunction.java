@@ -2,6 +2,7 @@ package com.github.fracture_hikari.maid_agent.ai.service.function;
 
 import com.github.fracture_hikari.maid_agent.compat.Integrations;
 import com.github.fracture_hikari.maid_agent.config.CraftConfig;
+import com.github.fracture_hikari.maid_agent.config.JeiConfig;
 import com.github.fracture_hikari.maid_agent.maid.memory.SlotMapping;
 import com.github.fracture_hikari.maid_agent.recipe.CraftingTreeEvaluator;
 import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
@@ -220,7 +221,7 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
         }
         
         // Simple listing without tree evaluation (default fallback when no params)
-        int maxRecipes = com.github.fracture_hikari.maid_agent.config.JeiConfig.RECIPE_SEARCH_MAX_RESULTS.get();
+        int maxRecipes = JeiConfig.RECIPE_SEARCH_MAX_RESULTS.get();
         List<CraftingRecipe> craftingRecipes = RecipeLookup.findByOutput(level, targetItem, maxRecipes);
         Optional<SmeltingRecipe> smeltingRecipe = RecipeLookup.findSmeltingByOutput(level, targetItem);
         

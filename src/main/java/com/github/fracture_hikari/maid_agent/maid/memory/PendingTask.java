@@ -1,11 +1,14 @@
 package com.github.fracture_hikari.maid_agent.maid.memory;
 
 import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
+import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -24,7 +27,7 @@ public class PendingTask implements Comparable<PendingTask> {
     // TaskStatus deprecated and removed
 
     // Dependency Management
-    private final java.util.List<PendingTask> dependents = new java.util.ArrayList<>();
+    private final List<PendingTask> dependents = new ArrayList<>();
     private int referenceCount = 0;
 
     public void addDependent(PendingTask dependent) {
@@ -32,7 +35,7 @@ public class PendingTask implements Comparable<PendingTask> {
         dependent.incrementRefCount();
     }
 
-    public java.util.List<PendingTask> getDependents() {
+    public List<PendingTask> getDependents() {
         return dependents;
     }
 
@@ -66,9 +69,10 @@ public class PendingTask implements Comparable<PendingTask> {
     private WorkstationType workstationType;  // For CRAFT tasks
     @Nullable
     private String recipeId;  // For CRAFT tasks - main recipe
+    private ProcessingJob blockingJob = null;
 
     @Nullable
-    private java.util.List<SlotMapping> slotMappings;  // Slot mappings for PROCESS tasks
+    private List<SlotMapping> slotMappings;  // Slot mappings for PROCESS tasks
 
     public PendingTask(EntityMaid maid, TaskType type, ItemStack requestedItem) {
         this(maid, type, requestedItem, null);
@@ -82,6 +86,14 @@ public class PendingTask implements Comparable<PendingTask> {
         this.workstationType = null;
         this.recipeId = null;
         this.slotMappings = null;
+    }
+
+    public void setBlockingJob(ProcessingJob blockingJob) {
+        this.blockingJob = blockingJob;
+    }
+
+    public boolean isBlocked() {
+        return blockingJob != null;
     }
 
     public TaskType getType() {
@@ -129,7 +141,7 @@ public class PendingTask implements Comparable<PendingTask> {
     }
 
     @Nullable
-    public java.util.List<SlotMapping> getSlotMappings() {
+    public List<SlotMapping> getSlotMappings() {
         return slotMappings;
     }
 
@@ -153,8 +165,13 @@ public class PendingTask implements Comparable<PendingTask> {
 
     @Override
     public String toString() {
-        return String.format("PendingTask{type=%s, item=%s, count=%d, actual=%d, refCount=%d}",
-                type, com.github.fracture_hikari.maid_agent.util.ItemIdUtils.getId(requestedItem), requestedItem.getCount(), actualCount, referenceCount);
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("PendingTask{type=%s, item=%s, count=%d, actual=%d, refCount=%d}",
+                type, ItemIdUtils.getId(requestedItem), requestedItem.getCount(), actualCount, referenceCount));
+        if (isBlocked()) {
+            sb.append(" blocked by ").append(blockingJob.toString());
+        }
+        return sb.toString();
     }
 
     @Override

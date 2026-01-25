@@ -60,6 +60,7 @@ public class CollectWorkTask extends AbstractWorkTask {
         if (!remains.isEmpty()) {
             outputInv.insertItem(outputSlot, remains, false);
             MemoryUtil.updateJobs(maid, false, "job fail: maid inventory full", currentJob);
+            outputInv.insertItem(outputSlot, remains, false);
         }
     }
 

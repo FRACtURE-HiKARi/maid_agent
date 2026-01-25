@@ -38,6 +38,9 @@ public class ProcessingJob {
         this.collectedCount = 0;
         this.blockedTask = blockedTask;
         this.maid = maid;
+        if (blockedTask != null) {
+            blockedTask.setBlockingJob(this);
+        }
     }
     
     public String getId() {

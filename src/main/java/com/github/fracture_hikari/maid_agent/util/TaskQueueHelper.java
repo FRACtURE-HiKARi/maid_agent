@@ -88,24 +88,6 @@ public final class TaskQueueHelper {
     }
     
     /**
-     * Queue a task. If it's the only task, start movement.
-     * @param maid The maid
-     * @param task Task to queue
-     * @param targetPos Optional target position for movement
-     */
-    public static void queueTask(EntityMaid maid, PendingTask task, BlockPos targetPos) {
-        TaskQueue queue = getOrCreateQueue(maid);
-        queue.enqueue(task);
-    }
-    
-    /**
-     * Queue a task without movement.
-     */
-    public static void queueTask(EntityMaid maid, PendingTask task) {
-        queueTask(maid, task, null);
-    }
-    
-    /**
      * Set maid movement target.
      */
     public static void setMovementTarget(EntityMaid maid, BlockPos target, float speed) {
