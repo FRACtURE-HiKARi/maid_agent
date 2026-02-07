@@ -138,7 +138,7 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
         int count = Math.min(params.count(), CraftConfig.MAX_CRAFT_OUTPUT.get());
         
         // Get maid's inventory and storage
-        Map<String, Integer> maidInventory = InventoryUtils.getMaidInventory(maid);
+        Map<String, Integer> maidInventory = InventoryUtils.toItemCountMap(InventoryUtils.getMaidInventory(maid));
         Map<String, Integer> storageInventory = java.util.Collections.emptyMap();
         
         StringBuilder sb = new StringBuilder();

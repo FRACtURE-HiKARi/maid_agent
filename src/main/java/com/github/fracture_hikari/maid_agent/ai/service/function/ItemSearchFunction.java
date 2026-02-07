@@ -7,6 +7,7 @@ import com.github.tartaricacid.touhoulittlemaid.ai.service.function.response.Too
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.ObjectParameter;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.Parameter;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.StringParameter;
+import com.github.tartaricacid.touhoulittlemaid.ai.service.llm.LLMConfig;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;

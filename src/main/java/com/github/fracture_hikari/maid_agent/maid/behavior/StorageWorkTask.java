@@ -1,22 +1,27 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
+import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
 import com.github.fracture_hikari.maid_agent.util.InventoryUtils;
 import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.items.IItemHandler;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /**
- * Behavior for FETCH and STORE tasks.
+ * Behavior for FETCH, STORE, and EXPLORE tasks.
  * Handles item transfer between maid inventory and storage containers.
+ * EXPLORE task reads storage contents and updates ViewedStorageMemory.
  */
 public class StorageWorkTask extends AbstractWorkTask {
 
@@ -32,6 +37,7 @@ public class StorageWorkTask extends AbstractWorkTask {
                 maid,
                 task -> task.getType() == PendingTask.TaskType.FETCH
                         || task.getType() == PendingTask.TaskType.STORE
+                        || task.getType() == PendingTask.TaskType.EXPLORE
         );
     }
 
@@ -47,22 +53,64 @@ public class StorageWorkTask extends AbstractWorkTask {
             return;
         }
 
-        ItemStack targetItem = task.getRequestedItem().copy();
-        String targetItemId = ItemIdUtils.getId(targetItem);
-        if (targetItem.isEmpty()) {
-            MemoryUtil.updateTasks(maid, task, false, "Failed to fetch: unknown item " + targetItemId);
-            return;
-        }
-
-        BlockEntity be = level.getBlockEntity(target.getPos());
+        BlockPos pos = target.getPos();
+        BlockEntity be = level.getBlockEntity(pos);
         if (be == null) {
-            MemoryUtil.updateTasks(maid, task, false, "Failed to fetch: no storage at " + target.getPos() + " for " + targetItemId);
+            MemoryUtil.updateTasks(maid, task, false, "no storage at " + pos);
             return;
         }
 
         IItemHandler storage = be.getCapability(ForgeCapabilities.ITEM_HANDLER, target.getSideOrNull()).orElse(null);
         if (storage == null) {
-            MemoryUtil.updateTasks(maid, task, false, "Failed to fetch: storage has no inventory");
+            MemoryUtil.updateTasks(maid, task, false, "storage has no inventory");
+            return;
+        }
+
+        // Handle EXPLORE task - read contents and update memory
+        if (task.getType() == PendingTask.TaskType.EXPLORE) {
+            handleExplore(level, maid, task, target, storage);
+            return;
+        }
+
+        // Handle FETCH/STORE tasks
+        handleTransfer(maid, task, storage);
+    }
+    
+    /**
+     * Handle EXPLORE task - read storage contents and update ViewedStorageMemory.
+     */
+    private void handleExplore(ServerLevel level, EntityMaid maid, PendingTask task, 
+                               WorkBlockTarget target, IItemHandler storage) {
+        // Read all contents from storage
+        List<ItemStack> contents = new ArrayList<>();
+        int itemTypes = 0;
+        for (int i = 0; i < storage.getSlots(); i++) {
+            ItemStack stack = storage.getStackInSlot(i);
+            if (!stack.isEmpty()) {
+                contents.add(stack.copy());
+                itemTypes++;
+            }
+        }
+        
+        // Update memory
+        ViewedStorageMemory memory = MemoryUtil.getOrCreateViewedStorageMemory(maid);
+        memory.addStorage(target, contents);
+        memory.setLastUpdated(level.getGameTime());
+        
+        BlockPos pos = target.getPos();
+        String msg = String.format("Explored %s at (%d,%d,%d) - found %d item types",
+                target.getType().getPath(), pos.getX(), pos.getY(), pos.getZ(), itemTypes);
+        MemoryUtil.updateTasks(maid, task, true, msg);
+    }
+    
+    /**
+     * Handle FETCH/STORE task - transfer items between maid and storage.
+     */
+    private void handleTransfer(EntityMaid maid, PendingTask task,IItemHandler storage) {
+        ItemStack targetItem = task.getRequestedItem().copy();
+        String targetItemId = ItemIdUtils.getId(targetItem);
+        if (targetItem.isEmpty()) {
+            MemoryUtil.updateTasks(maid, task, false, "unknown item " + targetItemId);
             return;
         }
 
@@ -91,7 +139,7 @@ public class StorageWorkTask extends AbstractWorkTask {
         } else {
             // Generalized failure message
             String reason = isFetch ? "(not found in storage)" : "(item not in inventory or storage full)";
-            String msg =  String.format("Could not %s any %s %s", isFetch ? "fetch" : "store", itemName, reason);
+            String msg = String.format("Could not %s any %s %s", isFetch ? "fetch" : "store", itemName, reason);
             MemoryUtil.updateTasks(maid, task, false, msg);
         }
     }

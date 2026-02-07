@@ -108,7 +108,7 @@ public class InsertWorkTask extends AbstractWorkTask {
         }
         
         // Create processing job in memory
-        JobMemory memory = MemoryUtil.getOrCreateMemory(maid);
+        JobMemory memory = MemoryUtil.getOrCreateJobMemory(maid);
         ItemStack expectedOutput = task.getRequestedItem().copy();
         expectedOutput.setCount(inputInserted);
         

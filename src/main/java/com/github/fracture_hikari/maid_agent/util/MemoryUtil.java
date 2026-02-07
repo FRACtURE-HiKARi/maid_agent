@@ -1,16 +1,12 @@
 package com.github.fracture_hikari.maid_agent.util;
 
 import com.github.fracture_hikari.maid_agent.MaidAgent;
-import com.github.fracture_hikari.maid_agent.maid.memory.JobMemory;
-import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
-import com.github.fracture_hikari.maid_agent.maid.memory.ProcessingJob;
-import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
+import com.github.fracture_hikari.maid_agent.maid.memory.*;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.core.BlockPos;
 
 import java.util.HashSet;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -54,13 +50,23 @@ public class MemoryUtil {
         memory.completeJob(success, message, finished);
     }
 
-    public static JobMemory getOrCreateMemory(EntityMaid maid) {
+    public static JobMemory getOrCreateJobMemory(EntityMaid maid) {
         return maid.getBrain()
                 .getMemory(MemoryModuleRegistry.PROCESSING_JOBS.get())
                 .orElseGet(() -> {
                     JobMemory memory = new JobMemory(maid);
                     maid.getBrain().setMemory(MemoryModuleRegistry.PROCESSING_JOBS.get(), memory);
                     return memory;
+                });
+    }
+
+    public static ViewedStorageMemory getOrCreateViewedStorageMemory(EntityMaid maid) {
+        return maid.getBrain()
+                .getMemory(MemoryModuleRegistry.VIEWED_STORAGE.get())
+                .orElseGet(() -> {
+                    ViewedStorageMemory mem = new ViewedStorageMemory();
+                    maid.getBrain().setMemory(MemoryModuleRegistry.VIEWED_STORAGE.get(), mem);
+                    return mem;
                 });
     }
 }

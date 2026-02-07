@@ -41,6 +41,11 @@ public class WorkBlockMoveTask extends AbstractMoveTask {
         Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
         if (taskOpt.isEmpty()) return false;
         currentMove = taskOpt.get();
+        
+        // Skip EXPLORE_ALL tasks - those are handled by ExploreStoragesTask
+        if (currentMove.getType() == PendingTask.TaskType.EXPLORE_ALL) {
+            return false;
+        }
 
         if (currentMove.getTarget().isEmpty()) return false;
         

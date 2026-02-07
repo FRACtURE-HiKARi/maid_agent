@@ -18,10 +18,12 @@ import java.util.Optional;
 public class PendingTask implements Comparable<PendingTask> {
     
     public enum TaskType {
-        FETCH,   // Get items from storage
-        STORE,   // Put items into storage
-        CRAFT,   // Craft items at workstation (instant)
-        PROCESS  // Two-phase: insert ingredients → wait → collect output
+        FETCH,       // Get items from storage
+        STORE,       // Put items into storage
+        EXPLORE,     // Explore specific storage (legacy)
+        EXPLORE_ALL, // Explore all nearby storages dynamically
+        CRAFT,       // Craft items at workstation (instant)
+        PROCESS      // Two-phase: insert ingredients → wait → collect output
     }
 
     // TaskStatus deprecated and removed
@@ -70,6 +72,7 @@ public class PendingTask implements Comparable<PendingTask> {
     @Nullable
     private String recipeId;  // For CRAFT tasks - main recipe
     private ProcessingJob blockingJob = null;
+    private int explorationRadius = 16;  // For EXPLORE_ALL tasks
 
     @Nullable
     private List<SlotMapping> slotMappings;  // Slot mappings for PROCESS tasks
@@ -86,6 +89,14 @@ public class PendingTask implements Comparable<PendingTask> {
         this.workstationType = null;
         this.recipeId = null;
         this.slotMappings = null;
+    }
+
+    public int getExplorationRadius() {
+        return explorationRadius;
+    }
+
+    public void setExplorationRadius(int radius) {
+        this.explorationRadius = Math.min(radius, 32);  // Cap at 32
     }
 
     public void setBlockingJob(ProcessingJob blockingJob) {

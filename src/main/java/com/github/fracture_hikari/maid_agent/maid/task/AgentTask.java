@@ -54,9 +54,10 @@ public class AgentTask implements IMaidTask {
         
         // Movement behavior for TaskQueue (priority 5 - higher)
         behaviors.add(Pair.of(5, new WorkBlockMoveTask()));  // Handles FETCH/STORE/CRAFT/PROCESS movement
+        behaviors.add(Pair.of(5, new ExploreStoragesTask())); // Handles EXPLORE_ALL - dynamic storage discovery
         
         // Work behaviors (priority 5 - each handles specific task types when arrived)
-        behaviors.add(Pair.of(5, new StorageWorkTask()));       // FETCH/STORE operations
+        behaviors.add(Pair.of(5, new StorageWorkTask()));       // FETCH/STORE/EXPLORE operations
         behaviors.add(Pair.of(5, new CraftingWorkTask()));      // CRAFT at crafting table
         behaviors.add(Pair.of(5, new InsertWorkTask()));  // PROCESS insert phase
 

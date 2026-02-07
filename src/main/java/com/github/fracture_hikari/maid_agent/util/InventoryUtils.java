@@ -3,12 +3,11 @@ package com.github.fracture_hikari.maid_agent.util;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
-import com.github.tartaricacid.touhoulittlemaid.util.ItemsUtil;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.items.IItemHandler;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,26 +15,58 @@ import studio.fantasyit.maid_storage_manager.util.InvUtil;
 
 /**
  * Utility class for inventory operations.
- * Provides methods to aggregate and analyze inventories.
+ * Provides methods to aggregate and analyze inventories using List<ItemStack>.
  */
 public final class InventoryUtils extends InvUtil {
     
     private InventoryUtils() {} // Prevent instantiation
     
     /**
-     * Aggregate IItemHandler contents to Map<itemId, count>.
-     * Merges stacks of the same item type.
+     * Merge an ItemStack into a list, aggregating counts for same item types.
      */
-    public static Map<String, Integer> aggregate(IItemHandler handler) {
-        Map<String, Integer> result = new HashMap<>();
+    private static void mergeStack(List<ItemStack> list, ItemStack stack) {
+        for (ItemStack existing : list) {
+            if (ItemStack.isSameItemSameTags(existing, stack)) {
+                existing.grow(stack.getCount());
+                return;
+            }
+        }
+        list.add(stack.copy());
+    }
+    
+    /**
+     * Aggregate IItemHandler contents to List<ItemStack>.
+     * Each ItemStack in the result has merged count for that item type.
+     */
+    public static List<ItemStack> aggregate(IItemHandler handler) {
+        List<ItemStack> result = new ArrayList<>();
         for (int i = 0; i < handler.getSlots(); i++) {
             ItemStack stack = handler.getStackInSlot(i);
             if (!stack.isEmpty()) {
-                String id = ItemIdUtils.getId(stack);
-                result.merge(id, stack.getCount(), Integer::sum);
+                mergeStack(result, stack);
             }
         }
         return result;
+    }
+    
+    /**
+     * Convert List<ItemStack> to Map<itemId, count> for backward compatibility.
+     */
+    public static Map<String, Integer> toItemCountMap(List<ItemStack> stacks) {
+        Map<String, Integer> map = new HashMap<>();
+        for (ItemStack stack : stacks) {
+            map.merge(ItemIdUtils.getId(stack), stack.getCount(), Integer::sum);
+        }
+        return map;
+    }
+    
+    /**
+     * Aggregate IItemHandler contents to Map<itemId, count>.
+     * @deprecated Use aggregate() and toItemCountMap() for new code.
+     */
+    @Deprecated
+    public static Map<String, Integer> aggregateToMap(IItemHandler handler) {
+        return toItemCountMap(aggregate(handler));
     }
     
     /**
@@ -59,10 +90,10 @@ public final class InventoryUtils extends InvUtil {
     }
     
     /**
-     * Get maid's available inventory as Map<itemId, count>.
+     * Get maid's available inventory as List<ItemStack>.
      * @param includeHand if true, includes main hand item
      */
-    public static Map<String, Integer> getMaidInventory(EntityMaid maid, boolean includeHand) {
+    public static List<ItemStack> getMaidInventory(EntityMaid maid, boolean includeHand) {
         IItemHandler handler = maid.getAvailableInv(includeHand);
         return aggregate(handler);
     }
@@ -70,29 +101,55 @@ public final class InventoryUtils extends InvUtil {
     /**
      * Get maid's available inventory (including hand).
      */
-    public static Map<String, Integer> getMaidInventory(EntityMaid maid) {
+    public static List<ItemStack> getMaidInventory(EntityMaid maid) {
         return getMaidInventory(maid, true);
     }
     
     /**
-     * Get storage inventory from maid's brain memory.
-     * Aggregates all viewed storages into single map.
+     * Get maid's available inventory as Map<itemId, count>.
+     * @deprecated Use getMaidInventory() and toItemCountMap() for new code.
      */
-    public static Map<String, Integer> getStorageInventory(EntityMaid maid) {
-        Map<String, Integer> inventory = new HashMap<>();
+    @Deprecated
+    public static Map<String, Integer> getMaidInventoryAsMap(EntityMaid maid, boolean includeHand) {
+        return toItemCountMap(getMaidInventory(maid, includeHand));
+    }
+    
+    /**
+     * Get maid's available inventory as Map<itemId, count>.
+     * @deprecated Use getMaidInventory() and toItemCountMap() for new code.
+     */
+    @Deprecated
+    public static Map<String, Integer> getMaidInventoryAsMap(EntityMaid maid) {
+        return getMaidInventoryAsMap(maid, true);
+    }
+    
+    /**
+     * Get storage inventory from maid's brain memory as List<ItemStack>.
+     * Aggregates all viewed storages into single list.
+     */
+    public static List<ItemStack> getStorageInventory(EntityMaid maid) {
+        List<ItemStack> inventory = new ArrayList<>();
         maid.getBrain()
                 .getMemory(MemoryModuleRegistry.VIEWED_STORAGE.get())
                 .ifPresent(memory -> {
                     for (int i = 0; i < memory.getStorageCount(); i++) {
                         memory.getStorageByIndex(i).ifPresent(target -> {
-                            for (ViewedStorageMemory.ItemCount ic : memory.getContents(target)) {
-                                String id = ItemIdUtils.getId(ic.item());
-                                inventory.merge(id, ic.count(), Integer::sum);
+                            for (ItemStack stack : memory.getContents(target)) {
+                                mergeStack(inventory, stack);
                             }
                         });
                     }
                 });
         return inventory;
+    }
+    
+    /**
+     * Get storage inventory from maid's brain memory as Map<itemId, count>.
+     * @deprecated Use getStorageInventory() and toItemCountMap() for new code.
+     */
+    @Deprecated
+    public static Map<String, Integer> getStorageInventoryAsMap(EntityMaid maid) {
+        return toItemCountMap(getStorageInventory(maid));
     }
     
     /**

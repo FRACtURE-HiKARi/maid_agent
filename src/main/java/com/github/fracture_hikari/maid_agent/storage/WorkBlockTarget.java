@@ -4,7 +4,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
-import org.jetbrains.annotations.NotNull;
+import studio.fantasyit.maid_storage_manager.storage.Target;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
@@ -21,7 +21,7 @@ public class WorkBlockTarget {
     private final Direction side;
 
     public WorkBlockTarget(ResourceLocation type, @Nullable BlockPos pos) {
-        this(type, pos, (Direction) null);
+        this(type, pos, null);
     }
 
     public WorkBlockTarget(ResourceLocation type, @Nullable BlockPos pos, @Nullable Direction side) {
@@ -29,9 +29,9 @@ public class WorkBlockTarget {
         this.pos = pos;
         this.side = side;
     }
-    
-    public WorkBlockTarget(ResourceLocation type, @Nullable BlockPos pos, Optional<Direction> side) {
-        this(type, pos, side.orElse(null));
+
+    public WorkBlockTarget(Target msmTarget) {
+        this(msmTarget.getType(), msmTarget.getPos(), msmTarget.getSide().orElse(null));
     }
 
     public ResourceLocation getType() {

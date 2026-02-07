@@ -8,20 +8,12 @@ import java.util.*;
 /**
  * Memory of discovered storage locations and their cached contents.
  * Updated when maid explores/interacts with storage blocks.
+ * Uses List<ItemStack> where each ItemStack holds aggregated count via getCount().
  */
 public class ViewedStorageMemory {
-    
-    /**
-     * Cached item count at a storage location.
-     */
-    public record ItemCount(ItemStack item, int count) {
-        public ItemCount(ItemStack item) {
-            this(item, item.getCount());
-        }
-    }
 
-    // Map from storage target to list of items found there
-    private final Map<WorkBlockTarget, List<ItemCount>> storageContents = new HashMap<>();
+    // Map from storage target to list of aggregated items (each ItemStack has merged count)
+    private final Map<WorkBlockTarget, List<ItemStack>> storageContents = new HashMap<>();
     
     // Positions we've already visited during this exploration session
     private final Set<WorkBlockTarget> visitedPositions = new HashSet<>();
@@ -33,6 +25,19 @@ public class ViewedStorageMemory {
     private long lastUpdated = 0;
 
     public ViewedStorageMemory() {
+    }
+    
+    /**
+     * Merge an ItemStack into a list, aggregating counts for same item types.
+     */
+    private static void mergeStack(List<ItemStack> list, ItemStack stack) {
+        for (ItemStack existing : list) {
+            if (ItemStack.isSameItemSameTags(existing, stack)) {
+                existing.grow(stack.getCount());
+                return;
+            }
+        }
+        list.add(stack.copy());
     }
     
     /**
@@ -62,32 +67,21 @@ public class ViewedStorageMemory {
      * Record items found at a storage location.
      */
     public void setContents(WorkBlockTarget target, List<ItemStack> items) {
-        List<ItemCount> counts = new ArrayList<>();
+        List<ItemStack> merged = new ArrayList<>();
         for (ItemStack stack : items) {
             if (!stack.isEmpty()) {
-                // Merge same items
-                boolean found = false;
-                for (int i = 0; i < counts.size(); i++) {
-                    if (ItemStack.isSameItemSameTags(counts.get(i).item(), stack)) {
-                        counts.set(i, new ItemCount(counts.get(i).item(), 
-                                counts.get(i).count() + stack.getCount()));
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    counts.add(new ItemCount(stack.copyWithCount(1), stack.getCount()));
-                }
+                mergeStack(merged, stack);
             }
         }
-        storageContents.put(target, counts);
+        storageContents.put(target, merged);
         visitedPositions.add(target);
     }
 
     /**
      * Get cached contents of a storage location.
+     * Returns List<ItemStack> where each stack has aggregated count.
      */
-    public List<ItemCount> getContents(WorkBlockTarget target) {
+    public List<ItemStack> getContents(WorkBlockTarget target) {
         return storageContents.getOrDefault(target, Collections.emptyList());
     }
 
@@ -103,9 +97,9 @@ public class ViewedStorageMemory {
      */
     public List<WorkBlockTarget> findStoragesWithItem(ItemStack target) {
         List<WorkBlockTarget> result = new ArrayList<>();
-        for (Map.Entry<WorkBlockTarget, List<ItemCount>> entry : storageContents.entrySet()) {
-            for (ItemCount ic : entry.getValue()) {
-                if (ItemStack.isSameItemSameTags(ic.item(), target) && ic.count() > 0) {
+        for (Map.Entry<WorkBlockTarget, List<ItemStack>> entry : storageContents.entrySet()) {
+            for (ItemStack stack : entry.getValue()) {
+                if (ItemStack.isSameItemSameTags(stack, target) && stack.getCount() > 0) {
                     result.add(entry.getKey());
                     break;
                 }
@@ -119,10 +113,10 @@ public class ViewedStorageMemory {
      */
     public int getTotalItemCount(ItemStack target) {
         int total = 0;
-        for (List<ItemCount> counts : storageContents.values()) {
-            for (ItemCount ic : counts) {
-                if (ItemStack.isSameItemSameTags(ic.item(), target)) {
-                    total += ic.count();
+        for (List<ItemStack> stacks : storageContents.values()) {
+            for (ItemStack stack : stacks) {
+                if (ItemStack.isSameItemSameTags(stack, target)) {
+                    total += stack.getCount();
                 }
             }
         }
@@ -133,16 +127,16 @@ public class ViewedStorageMemory {
      * Update cached count after extracting items.
      */
     public void recordExtraction(WorkBlockTarget target, ItemStack item, int count) {
-        List<ItemCount> counts = storageContents.get(target);
-        if (counts == null) return;
+        List<ItemStack> stacks = storageContents.get(target);
+        if (stacks == null) return;
         
-        for (int i = 0; i < counts.size(); i++) {
-            if (ItemStack.isSameItemSameTags(counts.get(i).item(), item)) {
-                int newCount = counts.get(i).count() - count;
+        for (int i = 0; i < stacks.size(); i++) {
+            if (ItemStack.isSameItemSameTags(stacks.get(i), item)) {
+                int newCount = stacks.get(i).getCount() - count;
                 if (newCount <= 0) {
-                    counts.remove(i);
+                    stacks.remove(i);
                 } else {
-                    counts.set(i, new ItemCount(counts.get(i).item(), newCount));
+                    stacks.get(i).setCount(newCount);
                 }
                 break;
             }
@@ -153,15 +147,17 @@ public class ViewedStorageMemory {
      * Update cached count after inserting items.
      */
     public void recordInsertion(WorkBlockTarget target, ItemStack item, int count) {
-        List<ItemCount> counts = storageContents.computeIfAbsent(target, k -> new ArrayList<>());
+        List<ItemStack> stacks = storageContents.computeIfAbsent(target, k -> new ArrayList<>());
         
-        for (int i = 0; i < counts.size(); i++) {
-            if (ItemStack.isSameItemSameTags(counts.get(i).item(), item)) {
-                counts.set(i, new ItemCount(counts.get(i).item(), counts.get(i).count() + count));
+        for (ItemStack stack : stacks) {
+            if (ItemStack.isSameItemSameTags(stack, item)) {
+                stack.grow(count);
                 return;
             }
         }
-        counts.add(new ItemCount(item.copyWithCount(1), count));
+        ItemStack newStack = item.copy();
+        newStack.setCount(count);
+        stacks.add(newStack);
     }
 
     /**
@@ -213,9 +209,18 @@ public class ViewedStorageMemory {
     /**
      * Add a storage to the indexed list.
      */
-    public void addStorage(WorkBlockTarget target, List<net.minecraft.world.item.ItemStack> contents) {
+    public void addStorage(WorkBlockTarget target, List<ItemStack> contents) {
         indexedStorages.add(target);
         setContents(target, contents);
+    }
+    
+    /**
+     * Add a storage by index only (contents will be filled by EXPLORE task).
+     */
+    public void addStorageTarget(WorkBlockTarget target) {
+        if (!indexedStorages.contains(target)) {
+            indexedStorages.add(target);
+        }
     }
 
     /**
@@ -233,5 +238,43 @@ public class ViewedStorageMemory {
      */
     public int getStorageCount() {
         return indexedStorages.size();
+    }
+
+    /**
+     * Generate a summary of all storage contents for AI.
+     * Format:
+     * [0] chest at (10,64,20):
+     *   - minecraft:diamond x12
+     *   - minecraft:iron_ingot x64
+     */
+    public String getStorageContentsSummary() {
+        if (indexedStorages.isEmpty()) {
+            return "No storages found.";
+        }
+        
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("Found %d storage(s):\n", indexedStorages.size()));
+        
+        for (int i = 0; i < indexedStorages.size(); i++) {
+            WorkBlockTarget target = indexedStorages.get(i);
+            String blockType = target.getType().getPath();
+            String pos = target.getPos().toShortString();
+            
+            sb.append(String.format("[%d] %s at %s", i, blockType, pos));
+            
+            List<ItemStack> contents = storageContents.get(target);
+            if (contents == null || contents.isEmpty()) {
+                sb.append(" (empty)\n");
+            } else {
+                sb.append(":\n");
+                for (ItemStack stack : contents) {
+                    sb.append(String.format("  - %s x%d\n", 
+                        com.github.fracture_hikari.maid_agent.util.ItemIdUtils.getId(stack), 
+                        stack.getCount()));
+                }
+            }
+        }
+        
+        return sb.toString().trim();
     }
 }
