@@ -75,6 +75,9 @@ public class PendingTask implements Comparable<PendingTask> {
     private int explorationRadius = 16;  // For EXPLORE_ALL tasks
 
     @Nullable
+    private String toolCallId;  // Associates task with originating LLM tool call
+
+    @Nullable
     private List<SlotMapping> slotMappings;  // Slot mappings for PROCESS tasks
 
     public PendingTask(EntityMaid maid, TaskType type, ItemStack requestedItem) {
@@ -82,6 +85,10 @@ public class PendingTask implements Comparable<PendingTask> {
     }
 
     public PendingTask(EntityMaid maid, TaskType type, ItemStack requestedItem, @Nullable WorkBlockTarget target) {
+        this(maid, type, requestedItem, target, null);
+    }
+
+    public PendingTask(EntityMaid maid, TaskType type, ItemStack requestedItem, @Nullable WorkBlockTarget target, @Nullable String toolCallId) {
         this.type = type;
         this.requestedItem = requestedItem.copy();
         this.target = target;
@@ -89,6 +96,7 @@ public class PendingTask implements Comparable<PendingTask> {
         this.workstationType = null;
         this.recipeId = null;
         this.slotMappings = null;
+        this.toolCallId = toolCallId;
     }
 
     public int getExplorationRadius() {
@@ -168,6 +176,15 @@ public class PendingTask implements Comparable<PendingTask> {
             net.minecraft.resources.ResourceLocation blockId = net.minecraftforge.registries.ForgeRegistries.BLOCKS.getKey(state.getBlock());
             return blockId != null && blockId.equals(target.getType());
         }
+    }
+    
+    @Nullable
+    public String getToolCallId() {
+        return toolCallId;
+    }
+    
+    public void setToolCallId(@Nullable String toolCallId) {
+        this.toolCallId = toolCallId;
     }
     
     public void setSlotMappings(@Nullable java.util.List<SlotMapping> slotMappings) {

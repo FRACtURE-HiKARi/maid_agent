@@ -1,26 +1,35 @@
 package com.github.fracture_hikari.maid_agent.maid.memory;
 
+import com.github.fracture_hikari.maid_agent.MaidAgent;
+import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.core.BlockPos;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.PriorityQueue;
 
 /**
  * Queue of pending tasks for the maid.
  * Supports task dependencies (DAG) using a PriorityQueue.
  * Tasks with 0 reference count are prioritized.
- * Notifies LLM only after entire batch completes.
+ * Notifies LLM via MaidAIChatManager.onPendingSuccess() when toolCallId group completes.
  */
-public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.TaskResult> {
+public class TaskQueue {
     
     // PriorityQueue to automatically surface ready tasks (refCount == 0)
     private final PriorityQueue<PendingTask> tasks = new PriorityQueue<>();
-    private EntityMaid maid;
+    private final EntityMaid maid;
+    private final List<TaskResult> completedResults = new ArrayList<>();
+    
+    // Track results and pending counts per toolCallId
+    private final Map<String, List<TaskResult>> resultsByToolCallId = new HashMap<>();
+    private final Map<String, Integer> pendingCountByToolCallId = new HashMap<>();
     
     public TaskQueue(EntityMaid maid) {
-        super(maid);
         this.maid = maid;
     }
     
@@ -34,8 +43,21 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
     }
     
     /**
-     * Add multiple tasks to the queue.
+     * Add multiple tasks to the queue with toolCallId tracking.
      */
+    public void enqueue(List<PendingTask> newTasks, String toolCallId) {
+        for (PendingTask task : newTasks) {
+            task.setToolCallId(toolCallId);
+            tasks.add(task);
+        }
+        pendingCountByToolCallId.merge(toolCallId, newTasks.size(), Integer::sum);
+    }
+    
+    /**
+     * Add multiple tasks to the queue (legacy, no toolCallId).
+     * @deprecated Use enqueue(List, String) with toolCallId instead
+     */
+    @Deprecated
     public void enqueue(List<PendingTask> newTasks) {
         tasks.addAll(newTasks);
     }
@@ -74,7 +96,9 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
      */
     public void clear() {
         tasks.clear();
-        super.clear();
+        completedResults.clear();
+        resultsByToolCallId.clear();
+        pendingCountByToolCallId.clear();
     }
     
     public boolean hasSimilarTask(PendingTask.TaskType type, net.minecraft.world.item.ItemStack item, int storageIndex) {
@@ -93,42 +117,107 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
         return maid.getBrain()
                 .getMemory(com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry.VIEWED_STORAGE.get())
                 .flatMap(mem -> mem.getStorageByIndex(storageIndex))
-                .map(target -> target.getPos())
+                .map(WorkBlockTarget::getPos)
                 .orElse(null);
     }
     
     /**
      * Mark a specific task as complete.
      * Decrements reference counts of dependent tasks.
+     * Tracks results per toolCallId and triggers async callback when group completes.
      */
     public void completeTask(PendingTask task, boolean success, String message, int actualCount) {
         if (tasks.remove(task)) {
             // Success: decrement refcounts of dependents and update them in PQ
             for (PendingTask dependent : task.getDependents()) {
                 // Must remove and re-add to update priority in PQ
-                // TODO: lazy insertion?
                 if (tasks.remove(dependent)) {
                     dependent.decrementRefCount();
                     tasks.add(dependent);
                 } else {
-                     // Dependent might not be in queue yet or already handled
                      dependent.decrementRefCount();
                 }
             }
             
-            completedResults.add(new TaskResult(
+            TaskResult result = new TaskResult(
                 task.getType(),
                 com.github.fracture_hikari.maid_agent.util.ItemIdUtils.getId(task.getRequestedItem()),
                 task.getRequestedItem().getCount(),
                 actualCount,
                 success,
                 message
-            ));
+            );
+            completedResults.add(result);
+            
+            // Track by toolCallId and notify when group completes
+            String toolCallId = task.getToolCallId();
+            if (toolCallId != null) {
+                resultsByToolCallId
+                    .computeIfAbsent(toolCallId, k -> new ArrayList<>())
+                    .add(result);
+                
+                int remaining = pendingCountByToolCallId.merge(toolCallId, -1, Integer::sum);
+                if (remaining <= 0) {
+                    notifyToolCallComplete(toolCallId);
+                }
+            }
         }
-        if (tasks.isEmpty()) {
-            notifyBatchComplete();
-            clear();
+    }
+    
+    /**
+     * Notify MaidAIChatManager that all tasks for a toolCallId have completed.
+     */
+    private void notifyToolCallComplete(String toolCallId) {
+        List<TaskResult> results = resultsByToolCallId.remove(toolCallId);
+        pendingCountByToolCallId.remove(toolCallId);
+        
+        if (results != null && !results.isEmpty()) {
+            String summary = buildSummaryFor(results);
+            maid.getAiChatManager().onPendingComplete(toolCallId, summary);
+        } else {
+            MaidAgent.LOGGER.warn("TaskQueue: no related results of toolCallId: {}", toolCallId);
         }
+    }
+    
+    /**
+     * Build summary for a specific set of results.
+     */
+    private String buildSummaryFor(List<TaskResult> results) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("Completed %d task(s):\n", results.size()));
+        
+        int successCount = 0;
+        int failCount = 0;
+        
+        for (int i = 0; i < results.size(); i++) {
+            TaskResult result = results.get(i);
+            String status = result.success ? "Success" : "Failed";
+            if (result.success) successCount++; else failCount++;
+            
+            if (result.type == PendingTask.TaskType.EXPLORE_ALL || result.type == PendingTask.TaskType.EXPLORE) {
+                sb.append(String.format("%d. [%s] - %s\n", i + 1, result.type.name(), status));
+                if (result.message != null && !result.message.isEmpty()) {
+                    sb.append(result.message).append("\n");
+                }
+            } else {
+                String itemDisplay = result.itemId.isEmpty() ? "" : result.itemId.replace("minecraft:", "");
+                String countDisplay = result.actualCount > 0 ? " x" + result.actualCount : "";
+                
+                sb.append(String.format("%d. [%s] %s%s - %s",
+                    i + 1, result.type.name(), itemDisplay, countDisplay, status));
+                
+                if (result.message != null && !result.message.isEmpty()) {
+                    sb.append(" (").append(result.message).append(")");
+                }
+                sb.append("\n");
+            }
+        }
+        
+        if (failCount > 0) {
+            sb.append(String.format("\nSummary: %d succeeded, %d failed", successCount, failCount));
+        }
+        
+        return sb.toString().trim();
     }
     
     /**
@@ -143,45 +232,12 @@ public class TaskQueue extends AbstractJobContainerWithAICallback<TaskQueue.Task
         }
     }
     
-    public boolean isBatchComplete() {
-        return tasks.isEmpty() && !completedResults.isEmpty();
-    }
-    
     public String getBatchSummary() {
         if (completedResults.isEmpty()) {
             return "No tasks completed.";
         }
         
-        StringBuilder sb = new StringBuilder();
-        sb.append(String.format("Completed %d task(s):\n", completedResults.size()));
-        
-        int successCount = 0;
-        int failCount = 0;
-        
-        for (int i = 0; i < completedResults.size(); i++) {
-            TaskResult result = completedResults.get(i);
-            String status = result.success ? "Success" : "Failed";
-            if (result.success) successCount++; else failCount++;
-            
-            sb.append(String.format("%d. [%s] %s %s - %s",
-                i + 1,
-                result.type.name(),
-                result.itemId.replace("minecraft:", ""),
-                result.actualCount > 0 ? "x" + result.actualCount : "",
-                status
-            ));
-            
-            if (result.message != null && !result.message.isEmpty()) {
-                sb.append(" (").append(result.message).append(")");
-            }
-            sb.append("\n");
-        }
-        
-        if (failCount > 0) {
-            sb.append(String.format("\nSummary: %d succeeded, %d failed", successCount, failCount));
-        }
-        
-        return sb.toString().trim();
+       return buildSummaryFor(completedResults);
     }
 
     public int getCompletedCount() {

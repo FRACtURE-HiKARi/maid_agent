@@ -68,23 +68,23 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
 
     @Override
     public ToolResponse onToolCall(Params params, EntityMaid maid) {
+        return null;
+    }
+
+    @Override
+    public ToolResponse onToolCall(Params params, EntityMaid maid, String toolCallId) {
         // Storage operations require maid_storage_manager
         if (!Integrations.maidStorageManager()) {
             return new ToolResponse(Integrations.getMsmRequiredMessage());
         }
-        
+
         if (!(maid.level() instanceof ServerLevel)) {
             return new ToolResponse("Cannot scan storage - not on server");
         }
-        
-        // Clear previous storage memory for fresh exploration
-        ViewedStorageMemory memory = MemoryUtil.getOrCreateViewedStorageMemory(maid);
-        memory.clearStorages();
-        memory.resetVisited();
-        
+
         // Get or create TaskQueue and check for existing explore task
         TaskQueue queue = TaskQueueHelper.getOrCreateQueue(maid);
-        
+
         // Check if already exploring
         if (!queue.isEmpty()) {
             PendingTask currentTask = queue.peek();
@@ -92,21 +92,23 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
                 return new ToolResponse("Already exploring storages. Please wait for the results.");
             }
         }
-        
+
+        // Clear previous storage memory for fresh exploration
+        ViewedStorageMemory memory = MemoryUtil.getOrCreateViewedStorageMemory(maid);
+        memory.clearStorages();
+        memory.resetVisited();
+
         int radius = Math.min(params.radius(), 32);
         
         // Create single EXPLORE_ALL task with exploration radius
-        PendingTask exploreTask = new PendingTask(maid, PendingTask.TaskType.EXPLORE_ALL, ItemStack.EMPTY);
+        PendingTask exploreTask = new PendingTask(maid, PendingTask.TaskType.EXPLORE_ALL, ItemStack.EMPTY, null, toolCallId);
         exploreTask.setExplorationRadius(radius);
         
         queue.enqueue(exploreTask);
         
         MaidAgent.LOGGER.info("Launched EXPLORE_ALL task with radius {} for storage discovery", radius);
         
-        return new ToolResponse(String.format(
-            "Starting storage exploration within %d blocks. The maid will walk around and scan all storages.\n" +
-            "Results will be reported when exploration is complete.", radius
-        ));
+        return ToolResponse.PENDING;
     }
 
     public record Params(int radius) {

@@ -119,7 +119,10 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
     }
 
     @Override
-    public ToolResponse onToolCall(Params params, EntityMaid maid) {
+    public ToolResponse onToolCall(Params params, EntityMaid maid) { return null; }
+
+    @Override
+    public ToolResponse onToolCall(Params params, EntityMaid maid, String toolCallId) {
         // Crafting requires maid_storage_manager
         if (!Integrations.maidStorageManager()) {
             return new ToolResponse(Integrations.getMsmRequiredMessage());
@@ -177,10 +180,11 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
                     // Generate graph directly from the evaluated tree
                     generateTaskGraph(best, maid, level, allTasks);
                     
-                    // Enqueue all tasks (TaskQueue handles priorities based on dependencies)
-                    TaskQueueHelper.getOrCreateQueue(maid).enqueue(allTasks);
+                    // Enqueue all tasks with toolCallId tracking
+                    TaskQueueHelper.getOrCreateQueue(maid).enqueue(allTasks, toolCallId);
                     
-                    sb.append(String.format("\n\nQueued %d tasks for crafting flow.", allTasks.size()));
+                    // Return PENDING to wait for async completion
+                    return ToolResponse.PENDING;
                 } else {
                     sb.append("\n\n[dry_run=true: Analysis only, no task queued]");
                 }
@@ -212,8 +216,10 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
             if (!params.dryRun()) {
                  List<PendingTask> allTasks = new ArrayList<>();
                  createSingleTask(maid, level, recipe, count, allTasks);
-                 TaskQueueHelper.getOrCreateQueue(maid).enqueue(allTasks);
-                 sb.append("\n\nQueued single crafting task.");
+                 TaskQueueHelper.getOrCreateQueue(maid).enqueue(allTasks, toolCallId);
+                 
+                 // Return PENDING to wait for async completion
+                 return ToolResponse.PENDING;
             } else {
                 sb.append("\n\n[dry_run=true: Analysis only, no task queued]");
             }

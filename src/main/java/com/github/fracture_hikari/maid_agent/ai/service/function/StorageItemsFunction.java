@@ -19,6 +19,7 @@ import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
 import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
 import com.github.fracture_hikari.maid_agent.util.TaskQueueHelper;
 
+import javax.tools.Tool;
 import java.util.List;
 import java.util.Optional;
 
@@ -111,7 +112,10 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
     }
 
     @Override
-    public ToolResponse onToolCall(Params params, EntityMaid maid) {
+    public ToolResponse onToolCall(Params params, EntityMaid maid) { return null; }
+
+    @Override
+    public ToolResponse onToolCall(Params params, EntityMaid maid, String toolCallId) {
         // Storage operations require maid_storage_manager
         if (!com.github.fracture_hikari.maid_agent.compat.Integrations.maidStorageManager()) {
             return new ToolResponse(
@@ -138,8 +142,8 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
         TaskQueue taskQueue = TaskQueueHelper.getOrCreateQueue(maid);
         
         boolean wasEmpty = taskQueue.isEmpty();
-        StringBuilder response = new StringBuilder();
-        int queued = 0;
+        StringBuilder errors = new StringBuilder();
+        List<PendingTask> tasksToQueue = new java.util.ArrayList<>();
         
         for (int i = 0; i < operations.size(); i++) {
             Operation op = operations.get(i);
@@ -155,14 +159,14 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
                 taskType = PendingTask.TaskType.STORE;
                 effectiveCount = op.count() <= 0 ? Integer.MAX_VALUE : op.count();
             } else {
-                response.append(String.format("Skipped operation %d: invalid action '%s'. ", i + 1, op.action()));
+                errors.append(String.format("Skipped operation %d: invalid action '%s'. ", i + 1, op.action()));
                 continue;
             }
             
             // Validate storage index
             Optional<WorkBlockTarget> targetOpt = memory.getStorageByIndex(op.storageIndex());
             if (targetOpt.isEmpty()) {
-                response.append(String.format("Skipped operation %d: invalid storage_index %d. ", i + 1, op.storageIndex()));
+                errors.append(String.format("Skipped operation %d: invalid storage_index %d. ", i + 1, op.storageIndex()));
                 continue;
             }
             
@@ -171,38 +175,42 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
             // Create ItemStack first
             net.minecraft.world.item.ItemStack stack = com.github.fracture_hikari.maid_agent.util.ItemIdUtils.createStack(op.itemId(), effectiveCount);
             if (stack.isEmpty()) {
-                response.append(String.format("Skipped operation %d: invalid item '%s'. ", i + 1, op.itemId()));
+                errors.append(String.format("Skipped operation %d: invalid item '%s'. ", i + 1, op.itemId()));
                 continue;
             }
 
-            // Check for similar task already in queue (warn but allow - could be multiple stacks)
+            // Check for similar task already in queue (warn but allow)
             if (taskQueue.hasSimilarTask(taskType, stack, op.storageIndex())) {
-                response.append(String.format("Note: Similar %s for %s already queued. ", 
+                errors.append(String.format("Note: Similar %s for %s already queued. ", 
                         op.action(), op.itemId().replace("minecraft:", "")));
             }
             
-            // Create task and add to queue
-            
+            // Create task
             PendingTask task = new PendingTask(maid, taskType, stack);
             task.setTarget(target);
-            int position = taskQueue.enqueue(task);
-            queued++;
+            tasksToQueue.add(task);
             
-            // Start walking for first task
-            if (wasEmpty && queued == 1) {
-                TaskQueueHelper.setMovementTarget(maid, target.getPos());
-            }
-            
-            MaidAgent.LOGGER.info("Queued operation {}: {} {} from storage[{}]", 
-                    position, taskType, op.itemId(), op.storageIndex());
+            MaidAgent.LOGGER.info("Prepared operation: {} {} from storage[{}]", 
+                    taskType, op.itemId(), op.storageIndex());
         }
         
-        if (queued == 0) {
-            return new ToolResponse("No valid operations to queue. " + response);
+        if (tasksToQueue.isEmpty()) {
+            return new ToolResponse("No valid operations to queue. " + errors);
         }
         
-        response.append(String.format("Queued %d operation(s). Will notify when complete.", queued));
-        return new ToolResponse(response.toString());
+        // Enqueue all tasks with toolCallId tracking
+        taskQueue.enqueue(tasksToQueue, toolCallId);
+        
+        // Start walking for first task
+        if (wasEmpty && !tasksToQueue.isEmpty()) {
+            tasksToQueue.get(0).getTarget().ifPresent(target -> 
+                TaskQueueHelper.setMovementTarget(maid, target.getPos()));
+        }
+        
+        MaidAgent.LOGGER.info("Queued {} operations for toolCallId {}", tasksToQueue.size(), toolCallId);
+        
+        // Return PENDING to wait for async completion
+        return ToolResponse.PENDING;
     }
 
     public record Operation(String action, int storageIndex, String itemId, int count) {}
