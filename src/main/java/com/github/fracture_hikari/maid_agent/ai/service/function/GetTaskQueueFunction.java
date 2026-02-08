@@ -24,10 +24,9 @@ import java.util.Set;
 public class GetTaskQueueFunction implements IFunctionCall<GetTaskQueueFunction.Params> {
     private static final String FUNCTION_ID = "get_task_queue";
     private static final String FUNCTION_DESC = """
-            Check the status of the maid's task queue.
-            Returns pending tasks, current task, and recently completed results.
-            Use this to check progress when the maid is busy, but don't use it to poll for tasks done.
-            You will be notified later for finished tasks.""";
+            Check the maid's task queue and processing jobs status.
+            Use to see current progress when maid is busy. Don't poll repeatedly; you'll be notified when tasks complete.
+            Returns current task, pending count, and completed summary.""";
 
     @Override
     public String getId() {

@@ -29,10 +29,10 @@ import net.minecraft.world.item.ItemStack;
 public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageFunction.Params> {
     private static final String FUNCTION_ID = "get_nearby_storage";
     private static final String FUNCTION_DESC = """
-            Discover nearby storage containers (chests, barrels, etc.).
-            The maid will walk around to find and scan all storages within the specified radius.
-            Results with full contents will be reported when exploration completes.
-            Use the storage_index in fetch/store operations after exploration.""";
+            Discover storage containers (chests, barrels, etc.) near the maid.
+            Use before storage_items to get available storage indices.
+            The maid walks to scan containers within the radius.
+            Returns: list of containers with index, position, type, and contents.""";
     
     private static final String RADIUS_PARAM_ID = "radius";
     private static final String RADIUS_PARAM_DESC = """

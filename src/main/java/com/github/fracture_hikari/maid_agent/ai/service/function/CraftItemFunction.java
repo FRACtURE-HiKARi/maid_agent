@@ -41,11 +41,11 @@ import java.util.*;
 public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params> {
     private static final String FUNCTION_ID = "craft_item";
     private static final String FUNCTION_DESC = """
-            Craft an item. Searches recipe, checks inventory for ingredients,
-            and queues the maid to walk to workstation and perform crafting.
-            
-            By default executes the craft. Set dry_run=true to only analyze.
-            Use recursive_search=true to find crafting tree for missing ingredients.""";
+            Craft an item using available recipes. Checks inventory for ingredients.
+            Use item_search first to find valid item IDs.
+            Set dry_run=true to only analyze recipe without executing.
+            Use recursive_search=true to find full crafting tree for missing ingredients.
+            Returns: completion summary with [CRAFT] item_id xCount - Success/Failed.""";
     
     private static final String ITEM_PARAM_ID = "item_id";
     private static final String ITEM_PARAM_DESC = """

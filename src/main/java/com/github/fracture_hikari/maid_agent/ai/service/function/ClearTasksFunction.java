@@ -22,8 +22,8 @@ public class ClearTasksFunction implements IFunctionCall<ClearTasksFunction.Para
     private static final String FUNCTION_ID = "clear_tasks";
     private static final String FUNCTION_DESC = """
             Clear all pending tasks and processing jobs.
-            Use this to cancel ongoing work or when the maid is stuck.
-            Returns the number of tasks and jobs that were cleared.""";
+            Use when maid is stuck, to cancel work, or to start fresh.
+            Returns count of tasks/jobs cleared. Maid becomes idle after clearing.""";
 
     @Override
     public String getId() {

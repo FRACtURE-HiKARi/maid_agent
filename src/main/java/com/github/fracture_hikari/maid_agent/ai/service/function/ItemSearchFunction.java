@@ -28,8 +28,9 @@ import java.util.stream.Collectors;
 public class ItemSearchFunction implements IFunctionCall<ItemSearchFunction.Result> {
     private static final String FUNCTION_ID = "item_search";
     private static final String FUNCTION_DESC = """
-            Search for items by keyword. Returns a list of matching items with their resource locations.
-            Use this to find items when you know part of the name but not the exact item ID.""";
+            Search for item IDs by keyword. Use to find exact item IDs for other tools.
+            With JEI: supports @modname, #tagname, $tooltip syntax.
+            Returns matching items with namespace:name format for use in craft_item, storage_items.""";
     private static final String KEYWORD_PARAM_ID = "keyword";
     private static final String KEYWORD_PARAM_DESC = """
             keyword (string, required): The search term to find items. 

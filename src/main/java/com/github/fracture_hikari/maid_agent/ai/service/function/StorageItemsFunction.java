@@ -33,14 +33,10 @@ import java.util.Optional;
 public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.Params> {
     private static final String FUNCTION_ID = "storage_items";
     private static final String FUNCTION_DESC = """
-            Fetch or store items from/to storage containers.
-            First use get_nearby_storage to see available storages.
-            
-            Supports single or batch operations:
-            - Single: provide one operation object in the 'operations' array
-            - Batch: provide multiple operations for sequential execution (e.g., fetch then store)
-            
-            The maid will execute all operations in order and notify you when complete.""";
+            Fetch or store items from/to containers. Requires get_nearby_storage first.
+            Supports batching: [{action,storage_index,item_id,count}, ...] for multi-step operations.
+            Use 'fetch' to take items from storage, 'store' to put items into storage.
+            Returns: completion summary with [FETCH/STORE] item_id xCount - Success/Failed.""";
 
     @Override
     public String getId() {

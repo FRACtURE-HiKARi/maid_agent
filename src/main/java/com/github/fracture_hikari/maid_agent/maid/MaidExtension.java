@@ -8,6 +8,7 @@ import com.github.tartaricacid.touhoulittlemaid.api.LittleMaidExtension;
 import com.github.tartaricacid.touhoulittlemaid.api.entity.ai.IExtraMaidBrain;
 import com.github.tartaricacid.touhoulittlemaid.entity.ai.brain.ExtraMaidBrainManager;
 import com.github.tartaricacid.touhoulittlemaid.entity.task.TaskManager;
+import com.github.fracture_hikari.maid_agent.ai.service.agentic.*;
 import com.github.fracture_hikari.maid_agent.ai.service.function.*;
 import com.github.fracture_hikari.maid_agent.ai.service.llm.claude.LLMClaudeSite;
 import com.github.fracture_hikari.maid_agent.ai.service.llm.gemini.LLMGeminiSite;
@@ -42,14 +43,66 @@ public class MaidExtension implements ILittleMaid {
 
     @Override
     public void registerAIFunctionCall(FunctionCallRegister register) {
-        register.register(new ItemSearchFunction());
-        register.register(new StorageItemsFunction());
-        register.register(new CraftItemFunction());
-        register.register(new GetInventoryFunction());
-        register.register(new GetNearbyStorageFunction());
-        register.register(new GetTaskQueueFunction());
-        //register.register(new GetFuelSourcesFunction());
-        register.register(new ClearTasksFunction());
+        // Initialize internal tool registry
+        AgenticToolRegistry registry = AgenticToolRegistry.getInstance();
+        
+        // Base policy that checks config file (applied to all tools)
+        ToolPolicy configCheck = ToolPolicy.requireConfig();
+        
+        // Register existing functions as internal handlers (NOT visible to TLM directly)
+        // Storage category
+        registry.register(FunctionCallAdapter.wrap(new GetNearbyStorageFunction())
+            .category(ToolCategory.STORAGE)
+            .shortDescription("Discover nearby storage blocks")
+            .policy(ToolPolicy.chain(configCheck, ToolPolicy.requireMod("maid_storage_manager")))
+            .build());
+        
+        registry.register(FunctionCallAdapter.wrap(new StorageItemsFunction())
+            .category(ToolCategory.STORAGE)
+            .shortDescription("Fetch/store items in containers")
+            .prerequisites("get_nearby_storage")
+            .policy(ToolPolicy.chain(configCheck, ToolPolicy.requireMod("maid_storage_manager")))
+            .build());
+        
+        // Crafting category  
+        registry.register(FunctionCallAdapter.wrap(new CraftItemFunction())
+            .category(ToolCategory.CRAFTING)
+            .shortDescription("Craft items using recipes")
+            .policy(configCheck)
+            .build());
+        
+        // Status category
+        registry.register(FunctionCallAdapter.wrap(new ItemSearchFunction())
+            .category(ToolCategory.STATUS)
+            .shortDescription("Search for item IDs by name")
+            .policy(configCheck)
+            .build());
+            
+        registry.register(FunctionCallAdapter.wrap(new GetInventoryFunction())
+            .category(ToolCategory.STATUS)
+            .shortDescription("Check maid's current inventory")
+            .policy(configCheck)
+            .build());
+            
+        registry.register(FunctionCallAdapter.wrap(new GetTaskQueueFunction())
+            .category(ToolCategory.STATUS)
+            .shortDescription("View pending tasks and jobs")
+            .policy(configCheck)
+            .build());
+        
+        // Control category
+        registry.register(FunctionCallAdapter.wrap(new ClearTasksFunction())
+            .category(ToolCategory.CONTROL)
+            .shortDescription("Clear pending tasks and jobs")
+            .policy(configCheck)
+            .build());
+        
+        // Load config AFTER registry is populated (so template can list all tools)
+        ToolConfig.getInstance().load();
+        
+        // Register ONLY the 2 entrance functions with TLM
+        register.register(new ExploreToolsFunction(registry));
+        register.register(new RunToolFunction(registry));
     }
 
     @Override

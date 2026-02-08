@@ -20,7 +20,8 @@ public class GetInventoryFunction implements IFunctionCall<GetInventoryFunction.
     private static final String FUNCTION_ID = "get_inventory";
     private static final String FUNCTION_DESC = """
             Get the maid's current inventory contents.
-            Returns a list of items with their quantities.""";
+            Use to check what items the maid is carrying before craft_item or storage_items.
+            Returns items with display names and namespace:name IDs.""";
 
     @Override
     public String getId() {
