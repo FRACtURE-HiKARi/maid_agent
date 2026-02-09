@@ -39,22 +39,22 @@ public class InsertWorkTask extends AbstractWorkTask {
         if (!super.checkExtraStartConditions(level, maid)) return false;
         Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
         if (taskOpt.isEmpty()) return false;
-        PendingTask task = taskOpt.get();
-
-        if (task.getType() != PendingTask.TaskType.PROCESS) {
+        
+        if (!(taskOpt.get() instanceof ProcessTask pt)) {
             return false;
         }
-        PendingTask.WorkstationType ws = task.getWorkstationType();
-        return ws == PendingTask.WorkstationType.FURNACE
-            || ws == PendingTask.WorkstationType.SMOKER
-            || ws == PendingTask.WorkstationType.BLAST_FURNACE;
+        ProcessTask.WorkstationType ws = pt.getWorkstationType();
+        return ws == ProcessTask.WorkstationType.FURNACE
+            || ws == ProcessTask.WorkstationType.SMOKER
+            || ws == ProcessTask.WorkstationType.BLAST_FURNACE;
     }
 
     @Override
     protected void handle(ServerLevel level, EntityMaid maid) {
         Optional<PendingTask> taskOpt = MemoryUtil.peekTask(maid);
         if (taskOpt.isEmpty()) return;
-        PendingTask task = taskOpt.get();
+        
+        if (!(taskOpt.get() instanceof ProcessTask task)) return;
 
         Optional<WorkBlockTarget> targetOpt = task.getTarget();
         if (targetOpt.isEmpty()) {
@@ -120,10 +120,7 @@ public class InsertWorkTask extends AbstractWorkTask {
         MaidAgent.LOGGER.info("Started processing job: {} input ({}), {} fuel, estimated {} ticks", 
                 inputInserted, inputItemId, fuelInserted, estimatedTicks);
         
-        task.setActualAccount(inputInserted);
-        //String msg = String.format("Inserted %d items + %d fuel into furnace. Processing will take ~%d seconds.",
-        //        inputInserted, fuelInserted, estimatedTicks / 20);
-        //MemoryUtil.updateTasks(maid, task, true, msg);
+        task.setActualCount(inputInserted);
     }
     
     /**

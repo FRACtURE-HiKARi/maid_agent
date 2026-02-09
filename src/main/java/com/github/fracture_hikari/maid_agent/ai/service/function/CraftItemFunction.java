@@ -7,6 +7,8 @@ import com.github.fracture_hikari.maid_agent.maid.memory.SlotMapping;
 import com.github.fracture_hikari.maid_agent.recipe.CraftingTreeEvaluator;
 import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.CraftTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.ProcessTask;
 import com.github.fracture_hikari.maid_agent.util.InventoryUtils;
 import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import com.github.fracture_hikari.maid_agent.util.RecipeLookup;
@@ -45,6 +47,8 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
             Use item_search first to find valid item IDs.
             Set dry_run=true to only analyze recipe without executing.
             Use recursive_search=true to find full crafting tree for missing ingredients.
+            The some recipes may need workstation blocks to proceed.
+            The tool may automatically find them. Don't craft extra workstation blocks.
             Returns: completion summary with [CRAFT] item_id xCount - Success/Failed.""";
     
     private static final String ITEM_PARAM_ID = "item_id";
@@ -290,86 +294,82 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
         sb.append(", ");
         
         ItemStack result = recipe.getResultItem(level.registryAccess());
-        sb.append(String.format("\"output\": \"%s\", \"count\": %d}", 
-                result.getItem().builtInRegistryHolder().key().location().toString(), 
+        sb.append(String.format("\"output\": \"%s\", \"count\": %d}",
+                ForgeRegistries.ITEMS.getKey(result.getItem()).toString(),
                 result.getCount() * count));
     }
     
     /**
-     * Recursively generate task graph from evaluated tree.
-     * @return The task created for the current tree node.
-     */
-    private PendingTask generateTaskGraph(CraftingTreeEvaluator.EvaluatedTree tree, EntityMaid maid, 
-                                          ServerLevel level, List<PendingTask> accumulator) {
-        // 1. Determine Workstation Type
-        String wsStr = tree.getWorkstation();
-        PendingTask.WorkstationType wsType = PendingTask.WorkstationType.CRAFTING_TABLE;
-        if (wsStr.contains("furnace") || wsStr.contains("smoker") || wsStr.contains("blast")) {
-            if (wsStr.contains("blast")) wsType = PendingTask.WorkstationType.BLAST_FURNACE;
-            else if (wsStr.contains("smoker")) wsType = PendingTask.WorkstationType.SMOKER;
-            else wsType = PendingTask.WorkstationType.FURNACE;
-        }
+ * Recursively generate task graph from evaluated tree.
+ * @return The task created for the current tree node.
+ */
+private PendingTask generateTaskGraph(CraftingTreeEvaluator.EvaluatedTree tree, EntityMaid maid, 
+                                      ServerLevel level, List<PendingTask> accumulator) {
+    // 1. Determine Workstation Type
+    String wsStr = tree.getWorkstation();
+    boolean isCraftingTable = !wsStr.contains("furnace") && !wsStr.contains("smoker") && !wsStr.contains("blast");
+    
+    // 2. Create Task
+    // tree.getOutput() returns ItemStack now
+    ItemStack targetItem = tree.getOutput().copy();
+    
+    PendingTask currentTask;
+    if (isCraftingTable) {
+        CraftTask craftTask = new CraftTask(targetItem, null, tree.getRecipeId());
+        craftTask.setTarget(new WorkBlockTarget(ResourceLocation.parse(wsStr), null));
+        currentTask = craftTask;
+    } else {
+        ProcessTask.WorkstationType wsType;
+        if (wsStr.contains("blast")) wsType = ProcessTask.WorkstationType.BLAST_FURNACE;
+        else if (wsStr.contains("smoker")) wsType = ProcessTask.WorkstationType.SMOKER;
+        else wsType = ProcessTask.WorkstationType.FURNACE;
         
-        // 2. Create Task
-        // tree.getOutput() returns ItemStack now
-        ItemStack targetItem = tree.getOutput().copy();
-        
-        PendingTask.TaskType taskType = (wsType == PendingTask.WorkstationType.CRAFTING_TABLE) 
-                ? PendingTask.TaskType.CRAFT 
-                : PendingTask.TaskType.PROCESS;
-        
-        PendingTask currentTask = new PendingTask(maid, taskType, targetItem);
-        currentTask.setWorkstationType(wsType);
-        currentTask.setRecipeId(tree.getRecipeId());
-        
-        // Set generic target (type only, null pos)
-        ResourceLocation wsBlockId = ResourceLocation.parse(wsStr); // Assume workstation string is valid block ID
-        currentTask.setTarget(new WorkBlockTarget(wsBlockId, null));
-        
-        // 3. Handle Ingredients & Dependencies
-        List<SlotMapping> slotMappings = new ArrayList<>();
-        
-        for (CraftingTreeEvaluator.IngredientResult ingredient : tree.getIngredients()) {
-            if (ingredient.hasSubTree()) {
-                // Dependency: Sub-task must complete first
-                PendingTask dependency = generateTaskGraph(ingredient.getSubTree(), maid, level, accumulator);
-                dependency.addDependent(currentTask);
-            }
-            
-            // For processing tasks (furnace), we need slot mappings
-            if (taskType == PendingTask.TaskType.PROCESS) {
-                int slot = ingredient.getTargetSlot();
-                if (slot >= 0) {
-                    // ingredient.getItemStack() returns the stack with correct count
-                    ItemStack inputStack = ingredient.getItemStack().copy(); 
-                    slotMappings.add(new SlotMapping(null, slot, inputStack));
-                }
-            }
-        }
-        
-        if (!slotMappings.isEmpty()) {
-            currentTask.setSlotMappings(slotMappings);
-        }
-        
-        accumulator.add(currentTask);
-        return currentTask;
+        ProcessTask processTask = new ProcessTask(targetItem, null, wsType, tree.getRecipeId());
+        processTask.setTarget(new WorkBlockTarget(ResourceLocation.parse(wsStr), null));
+        currentTask = processTask;
     }
+    
+    // 3. Handle Ingredients & Dependencies
+    List<SlotMapping> slotMappings = new ArrayList<>();
+    
+    for (CraftingTreeEvaluator.IngredientResult ingredient : tree.getIngredients()) {
+        if (ingredient.hasSubTree()) {
+            // Dependency: Sub-task must complete first
+            PendingTask dependency = generateTaskGraph(ingredient.getSubTree(), maid, level, accumulator);
+            dependency.addDependent(currentTask);
+        }
+        
+        // For processing tasks (furnace), we need slot mappings
+        if (currentTask instanceof ProcessTask processTask) {
+            int slot = ingredient.getTargetSlot();
+            if (slot >= 0) {
+                // ingredient.getItemStack() returns the stack with correct count
+                ItemStack inputStack = ingredient.getItemStack().copy(); 
+                slotMappings.add(new SlotMapping(null, slot, inputStack));
+            }
+        }
+    }
+    
+    if (!slotMappings.isEmpty() && currentTask instanceof ProcessTask processTask) {
+        processTask.setSlotMappings(slotMappings);
+    }
+    
+    accumulator.add(currentTask);
+    return currentTask;
+}    
 
     private void createSingleTask(EntityMaid maid, ServerLevel level, CraftingRecipe recipe, int count, List<PendingTask> accumulator) {
-        String wsStr = "minecraft:crafting_table";
-        PendingTask.WorkstationType wsType = PendingTask.WorkstationType.CRAFTING_TABLE;
-        
-        ItemStack result = recipe.getResultItem(level.registryAccess());
-        ItemStack targetItem = result.copy();
-        targetItem.setCount(result.getCount() * count);
-        
-        PendingTask task = new PendingTask(maid, PendingTask.TaskType.CRAFT, targetItem);
-        task.setWorkstationType(wsType);
-        task.setRecipeId(recipe.getId().toString());
-        task.setTarget(new WorkBlockTarget(ResourceLocation.parse(wsStr), null));
-        
-        accumulator.add(task);
-    }
+    String wsStr = "minecraft:crafting_table";
+    
+    ItemStack result = recipe.getResultItem(level.registryAccess());
+    ItemStack targetItem = result.copy();
+    targetItem.setCount(result.getCount() * count);
+    
+    CraftTask task = new CraftTask(targetItem, null, recipe.getId().toString());
+    task.setTarget(new WorkBlockTarget(ResourceLocation.parse(wsStr), null));
+    
+    accumulator.add(task);
+}    
     
     private List<IngredientNeed> analyzeIngredients(List<Ingredient> ingredients, int multiplier) {
         Map<String, Integer> needs = new LinkedHashMap<>();

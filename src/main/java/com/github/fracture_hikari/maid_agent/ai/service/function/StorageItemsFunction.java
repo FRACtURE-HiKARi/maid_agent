@@ -15,6 +15,8 @@ import com.github.fracture_hikari.maid_agent.MaidAgent;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.FetchTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.StoreTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
 import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
 import com.github.fracture_hikari.maid_agent.util.TaskQueueHelper;
@@ -145,14 +147,14 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
             Operation op = operations.get(i);
             
             // Validate action
-            PendingTask.TaskType taskType;
+            boolean isFetch;
             int effectiveCount;
             
             if ("fetch".equalsIgnoreCase(op.action())) {
-                taskType = PendingTask.TaskType.FETCH;
+                isFetch = true;
                 effectiveCount = op.count() <= 0 ? 1 : op.count();
             } else if ("store".equalsIgnoreCase(op.action())) {
-                taskType = PendingTask.TaskType.STORE;
+                isFetch = false;
                 effectiveCount = op.count() <= 0 ? Integer.MAX_VALUE : op.count();
             } else {
                 errors.append(String.format("Skipped operation %d: invalid action '%s'. ", i + 1, op.action()));
@@ -176,18 +178,18 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
             }
 
             // Check for similar task already in queue (warn but allow)
-            if (taskQueue.hasSimilarTask(taskType, stack, op.storageIndex())) {
+            Class<? extends PendingTask> taskClass = isFetch ? FetchTask.class : StoreTask.class;
+            if (taskQueue.hasSimilarTask(taskClass, stack, op.storageIndex())) {
                 errors.append(String.format("Note: Similar %s for %s already queued. ", 
                         op.action(), op.itemId().replace("minecraft:", "")));
             }
             
             // Create task
-            PendingTask task = new PendingTask(maid, taskType, stack);
-            task.setTarget(target);
+            PendingTask task = isFetch ? new FetchTask(stack, target) : new StoreTask(stack, target);
             tasksToQueue.add(task);
             
             MaidAgent.LOGGER.info("Prepared operation: {} {} from storage[{}]", 
-                    taskType, op.itemId(), op.storageIndex());
+                    isFetch ? "FETCH" : "STORE", op.itemId(), op.storageIndex());
         }
         
         if (tasksToQueue.isEmpty()) {

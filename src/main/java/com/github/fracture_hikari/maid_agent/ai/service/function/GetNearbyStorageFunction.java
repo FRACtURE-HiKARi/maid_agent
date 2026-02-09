@@ -14,6 +14,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.ExploreAllTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -88,7 +89,7 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
         // Check if already exploring
         if (!queue.isEmpty()) {
             PendingTask currentTask = queue.peek();
-            if (currentTask != null && currentTask.getType() == PendingTask.TaskType.EXPLORE_ALL) {
+            if (currentTask instanceof ExploreAllTask) {
                 return new ToolResponse("Already exploring storages. Please wait for the results.");
             }
         }
@@ -101,8 +102,7 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
         int radius = Math.min(params.radius(), 32);
         
         // Create single EXPLORE_ALL task with exploration radius
-        PendingTask exploreTask = new PendingTask(maid, PendingTask.TaskType.EXPLORE_ALL, ItemStack.EMPTY, null, toolCallId);
-        exploreTask.setExplorationRadius(radius);
+        ExploreAllTask exploreTask = new ExploreAllTask(radius, toolCallId);
         
         queue.enqueue(exploreTask);
         

@@ -1,7 +1,9 @@
 package com.github.fracture_hikari.maid_agent.maid.memory;
 
 import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
+import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.BlockEntity;
 
 import java.util.*;
 
@@ -19,14 +21,18 @@ public class ViewedStorageMemory {
     private final Set<WorkBlockTarget> visitedPositions = new HashSet<>();
     
     // Ordered list of storages for LLM indexed access
-    private final List<WorkBlockTarget> indexedStorages = new ArrayList<>();
+    private final List<ViewedStorage> indexedStorages = new ArrayList<>();
     
     // Timestamp of last update (game time in ticks)
     private long lastUpdated = 0;
 
     public ViewedStorageMemory() {
     }
-    
+
+    private record ViewedStorage(WorkBlockTarget target, String blockName) {
+
+    }
+
     /**
      * Merge an ItemStack into a list, aggregating counts for same item types.
      */
@@ -209,18 +215,9 @@ public class ViewedStorageMemory {
     /**
      * Add a storage to the indexed list.
      */
-    public void addStorage(WorkBlockTarget target, List<ItemStack> contents) {
-        indexedStorages.add(target);
+    public void addStorage(WorkBlockTarget target, List<ItemStack> contents, String blockName) {
+        indexedStorages.add(new ViewedStorage(target, blockName));
         setContents(target, contents);
-    }
-    
-    /**
-     * Add a storage by index only (contents will be filled by EXPLORE task).
-     */
-    public void addStorageTarget(WorkBlockTarget target) {
-        if (!indexedStorages.contains(target)) {
-            indexedStorages.add(target);
-        }
     }
 
     /**
@@ -228,7 +225,7 @@ public class ViewedStorageMemory {
      */
     public Optional<WorkBlockTarget> getStorageByIndex(int index) {
         if (index >= 0 && index < indexedStorages.size()) {
-            return Optional.of(indexedStorages.get(index));
+            return Optional.of(indexedStorages.get(index).target);
         }
         return Optional.empty();
     }
@@ -256,8 +253,9 @@ public class ViewedStorageMemory {
         sb.append(String.format("Found %d storage(s):\n", indexedStorages.size()));
         
         for (int i = 0; i < indexedStorages.size(); i++) {
-            WorkBlockTarget target = indexedStorages.get(i);
-            String blockType = target.getType().getPath();
+            ViewedStorage viewed = indexedStorages.get(i);
+            WorkBlockTarget target = viewed.target;
+            String blockType = viewed.blockName;
             String pos = target.getPos().toShortString();
             
             sb.append(String.format("[%d] %s at %s", i, blockType, pos));
@@ -269,7 +267,7 @@ public class ViewedStorageMemory {
                 sb.append(":\n");
                 for (ItemStack stack : contents) {
                     sb.append(String.format("  - %s x%d\n", 
-                        com.github.fracture_hikari.maid_agent.util.ItemIdUtils.getId(stack), 
+                        ItemIdUtils.getId(stack),
                         stack.getCount()));
                 }
             }

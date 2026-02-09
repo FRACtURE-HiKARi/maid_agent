@@ -1,11 +1,13 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
-import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
+import com.github.fracture_hikari.maid_agent.maid.memory.ExploreTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.FetchTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.StoreTask;
 import com.github.fracture_hikari.maid_agent.util.InventoryUtils;
 import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
-import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -14,8 +16,6 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.items.IItemHandler;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 
 /**
@@ -35,9 +35,8 @@ public class StorageWorkTask extends AbstractWorkTask {
         return checkTaskMemory(
                 level,
                 maid,
-                task -> task.getType() == PendingTask.TaskType.FETCH
-                        || task.getType() == PendingTask.TaskType.STORE
-                        || task.getType() == PendingTask.TaskType.EXPLORE
+                task -> task instanceof FetchTask
+                        || task instanceof StoreTask
         );
     }
 
@@ -66,47 +65,14 @@ public class StorageWorkTask extends AbstractWorkTask {
             return;
         }
 
-        // Handle EXPLORE task - read contents and update memory
-        if (task.getType() == PendingTask.TaskType.EXPLORE) {
-            handleExplore(level, maid, task, target, storage);
-            return;
-        }
-
         // Handle FETCH/STORE tasks
         handleTransfer(maid, task, storage);
     }
     
     /**
-     * Handle EXPLORE task - read storage contents and update ViewedStorageMemory.
-     */
-    private void handleExplore(ServerLevel level, EntityMaid maid, PendingTask task, 
-                               WorkBlockTarget target, IItemHandler storage) {
-        // Read all contents from storage
-        List<ItemStack> contents = new ArrayList<>();
-        int itemTypes = 0;
-        for (int i = 0; i < storage.getSlots(); i++) {
-            ItemStack stack = storage.getStackInSlot(i);
-            if (!stack.isEmpty()) {
-                contents.add(stack.copy());
-                itemTypes++;
-            }
-        }
-        
-        // Update memory
-        ViewedStorageMemory memory = MemoryUtil.getOrCreateViewedStorageMemory(maid);
-        memory.addStorage(target, contents);
-        memory.setLastUpdated(level.getGameTime());
-        
-        BlockPos pos = target.getPos();
-        String msg = String.format("Explored %s at (%d,%d,%d) - found %d item types",
-                target.getType().getPath(), pos.getX(), pos.getY(), pos.getZ(), itemTypes);
-        MemoryUtil.updateTasks(maid, task, true, msg);
-    }
-    
-    /**
      * Handle FETCH/STORE task - transfer items between maid and storage.
      */
-    private void handleTransfer(EntityMaid maid, PendingTask task,IItemHandler storage) {
+    private void handleTransfer(EntityMaid maid, PendingTask task, IItemHandler storage) {
         ItemStack targetItem = task.getRequestedItem().copy();
         String targetItemId = ItemIdUtils.getId(targetItem);
         if (targetItem.isEmpty()) {
@@ -115,7 +81,7 @@ public class StorageWorkTask extends AbstractWorkTask {
         }
 
         IItemHandler maidInv = maid.getAvailableInv(false);
-        boolean isFetch = (task.getType() == PendingTask.TaskType.FETCH);
+        boolean isFetch = (task instanceof FetchTask);
 
         // 1. Determine Source and Destination based on task type
         IItemHandler source = isFetch ? storage : maidInv;
@@ -130,7 +96,7 @@ public class StorageWorkTask extends AbstractWorkTask {
         if (amountModified > 0) {
             // Specific logic for STORE tasks from your original code
             if (!isFetch) {
-                task.setActualAccount(amountModified);
+                task.setActualCount(amountModified);
             }
             String action = isFetch ? "Fetched" : "Stored";
             String location = isFetch ? "from storage" : "in storage";

@@ -2,6 +2,7 @@ package com.github.fracture_hikari.maid_agent.maid.memory;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.registries.ForgeRegistries;
 
 /**
  * Represents a single item-to-slot mapping for processing recipes.
@@ -17,21 +18,6 @@ public record SlotMapping(
     int slot,              // Target slot index
     ItemStack item         // Item to insert (includes count)
 ) {
-    
-    /**
-     * Create a mapping for furnace input slot.
-     */
-    public static SlotMapping furnaceInput(BlockPos pos, ItemStack item) {
-        return new SlotMapping(pos, 0, item.copy());
-    }
-    
-    /**
-     * Create a mapping for furnace fuel slot.
-     */
-    public static SlotMapping furnaceFuel(BlockPos pos, ItemStack item) {
-        return new SlotMapping(pos, 1, item.copy());
-    }
-    
     /**
      * Copy constructor to prevent mutation.
      */
@@ -43,7 +29,7 @@ public record SlotMapping(
      * Get item ID for display/logging.
      */
     public String getItemId() {
-        return net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item.getItem()).toString();
+        return ForgeRegistries.ITEMS.getKey(item.getItem()).toString();
     }
     
     /**

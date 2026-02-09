@@ -1,15 +1,13 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
+import com.github.fracture_hikari.maid_agent.maid.memory.ExploreAllTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
-import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-
-
-// MSM imports for storage detection
 
 import java.util.Optional;
 
@@ -43,7 +41,7 @@ public class WorkBlockMoveTask extends AbstractMoveTask {
         currentMove = taskOpt.get();
         
         // Skip EXPLORE_ALL tasks - those are handled by ExploreStoragesTask
-        if (currentMove.getType() == PendingTask.TaskType.EXPLORE_ALL) {
+        if (currentMove instanceof ExploreAllTask) {
             return false;
         }
 
@@ -52,7 +50,7 @@ public class WorkBlockMoveTask extends AbstractMoveTask {
         // Log intent (target pos might be null, which is fine for generic search)
         BlockPos pos = currentMove.getTarget().get().getPos();
         String targetStr = (pos != null) ? pos.toShortString() : "generic:" + currentMove.getTarget().get().getType();
-        MaidAgent.LOGGER.info("TaskMoveTask: Setting up movement for {} to {}", currentMove.getType(), targetStr);
+        MaidAgent.LOGGER.info("TaskMoveTask: Setting up movement for {} to {}", currentMove.getTypeName(), targetStr);
         return true;
     }
 

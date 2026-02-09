@@ -1,7 +1,8 @@
 package com.github.fracture_hikari.maid_agent.util;
 
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
-import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.CraftTask;
+import com.github.fracture_hikari.maid_agent.maid.memory.ProcessTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
 import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
@@ -24,47 +25,6 @@ public final class TaskQueueHelper {
     private static final float DEFAULT_WALK_SPEED = 0.6f;
     
     private TaskQueueHelper() {} // Prevent instantiation
-    
-    /**
-     * Find nearest workstation of given type within radius.
-     * @param level Server level
-     * @param center Center position to search from
-     * @param radius Search radius
-     * @param type Workstation type to find
-     * @return Optional containing nearest position if found
-     */
-    public static Optional<BlockPos> findNearestWorkstation(
-            ServerLevel level, BlockPos center, int radius, PendingTask.WorkstationType type) {
-        BlockPos nearest = null;
-        double minDist = Double.MAX_VALUE;
-        
-        for (BlockPos pos : BlockPos.betweenClosed(
-                center.offset(-radius, -4, -radius),
-                center.offset(radius, 4, radius))) {
-            if (isWorkstation(level, pos, type)) {
-                double dist = center.distSqr(pos);
-                if (dist < minDist) {
-                    minDist = dist;
-                    nearest = pos.immutable();
-                }
-            }
-        }
-        
-        return Optional.ofNullable(nearest);
-    }
-    
-    /**
-     * Check if block at position is a workstation of given type.
-     */
-    public static boolean isWorkstation(ServerLevel level, BlockPos pos, PendingTask.WorkstationType type) {
-        BlockState state = level.getBlockState(pos);
-        return switch (type) {
-            case CRAFTING_TABLE -> state.is(Blocks.CRAFTING_TABLE);
-            case FURNACE -> state.is(Blocks.FURNACE);
-            case SMOKER -> state.is(Blocks.SMOKER);
-            case BLAST_FURNACE -> state.is(Blocks.BLAST_FURNACE);
-        };
-    }
     
     /**
      * Get task queue for maid (read-only, does not create if absent).
@@ -100,12 +60,5 @@ public final class TaskQueueHelper {
      */
     public static void setMovementTarget(EntityMaid maid, BlockPos target) {
         setMovementTarget(maid, target, DEFAULT_WALK_SPEED);
-    }
-    
-    /**
-     * Get search radius for maid (uses restriction radius if set).
-     */
-    public static int getSearchRadius(EntityMaid maid, int defaultRadius) {
-        return maid.hasRestriction() ? (int) maid.getRestrictRadius() : defaultRadius;
     }
 }

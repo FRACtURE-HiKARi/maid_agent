@@ -2,6 +2,7 @@ package com.github.fracture_hikari.maid_agent.maid.behavior;
 
 import com.github.fracture_hikari.maid_agent.MaidAgent;
 import com.github.fracture_hikari.maid_agent.compat.Integrations;
+import com.github.fracture_hikari.maid_agent.maid.memory.ExploreAllTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
 import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
@@ -41,10 +42,9 @@ public class ExploreStoragesTask extends MaidMoveToBlockTask {
     private static final float WALK_SPEED = 0.6f;
     private static final double ARRIVAL_DISTANCE_SQ = 2.5 * 2.5;
     
-    private PendingTask currentExploreTask;
+    private ExploreAllTask currentExploreTask;
     private BlockPos explorationCenter;
     private int explorationRadius = 16;
-    private boolean hasFoundAnyStorage = false;
     
     public ExploreStoragesTask() {
         super(WALK_SPEED, 4);  // verticalSearchRange = 4
@@ -67,17 +67,16 @@ public class ExploreStoragesTask extends MaidMoveToBlockTask {
         if (taskOpt.isEmpty()) return false;
         
         PendingTask task = taskOpt.get();
-        if (task.getType() != PendingTask.TaskType.EXPLORE_ALL) return false;
+        if (!(task instanceof ExploreAllTask exploreAllTask)) return false;
         
-        currentExploreTask = task;
-        explorationRadius = task.getExplorationRadius();
+        currentExploreTask = exploreAllTask;
+        explorationRadius = exploreAllTask.getExplorationRadius();
         return true;
     }
     
     @Override
     protected void start(ServerLevel level, EntityMaid maid, long gameTime) {
         explorationCenter = maid.blockPosition();
-        hasFoundAnyStorage = false;
         
         MaidAgent.LOGGER.info("ExploreStoragesTask: Starting exploration from {} with radius {}", 
                 explorationCenter.toShortString(), explorationRadius);
@@ -141,7 +140,6 @@ public class ExploreStoragesTask extends MaidMoveToBlockTask {
         if (distSq < ARRIVAL_DISTANCE_SQ) {
             // Arrived at storage - explore it and search for next
             exploreStorage(level, maid, targetPos);
-            hasFoundAnyStorage = true;
             
             // Clear movement targets
             maid.getBrain().eraseMemory(InitEntities.TARGET_POS.get());
@@ -178,16 +176,16 @@ public class ExploreStoragesTask extends MaidMoveToBlockTask {
         
         // Read contents
         BlockEntity be = level.getBlockEntity(pos);
+        String name = level.getBlockState(pos).getBlock().getName().getString();
         if (be == null) {
             MaidAgent.LOGGER.warn("ExploreStoragesTask: No block entity at {}", pos.toShortString());
-            memory.addStorage(target, List.of());
             memory.markVisited(target);
             return;
         }
         
         be.getCapability(ForgeCapabilities.ITEM_HANDLER, msmTarget.getSide().orElse(null)).ifPresent(storage -> {
             List<ItemStack> contents = InventoryUtils.aggregate(storage);
-            memory.addStorage(target, contents);
+            memory.addStorage(target, contents, name);
             memory.markVisited(target);
             
             MaidAgent.LOGGER.info("ExploreStoragesTask: Explored {} at {} - found {} item types",
@@ -206,25 +204,12 @@ public class ExploreStoragesTask extends MaidMoveToBlockTask {
         maid.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
         
         // Complete the task with summary
-        Optional<TaskQueue> queueOpt = TaskQueueHelper.getQueue(maid);
-        if (queueOpt.isPresent() && currentExploreTask != null) {
+        TaskQueue queue = TaskQueueHelper.getOrCreateQueue(maid);
+        if (currentExploreTask != null) {
             ViewedStorageMemory memory = MemoryUtil.getOrCreateViewedStorageMemory(maid);
-            queueOpt.get().completeTask(currentExploreTask, true, summary, memory.getStorageCount());
+            queue.completeTask(currentExploreTask, true, summary, memory.getStorageCount());
         }
         
         currentExploreTask = null;
     }
-
-//    @Override
-//    protected void stop(ServerLevel level, EntityMaid maid, long gameTime) {
-//        // If stopped unexpectedly, still report what we found
-//        if (currentExploreTask != null) {
-//            ViewedStorageMemory memory = MemoryUtil.getOrCreateViewedStorageMemory(maid);
-//            String summary = hasFoundAnyStorage ?
-//                    memory.getStorageContentsSummary() :
-//                    "Exploration interrupted. No storages fully scanned.";
-//            completeExploration(level, maid, summary);
-//        }
-//        super.stop(level, maid, gameTime);
-//    }
 }

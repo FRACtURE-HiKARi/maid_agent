@@ -101,9 +101,12 @@ public class TaskQueue {
         pendingCountByToolCallId.clear();
     }
     
-    public boolean hasSimilarTask(PendingTask.TaskType type, net.minecraft.world.item.ItemStack item, int storageIndex) {
+    /**
+     * Check if queue has similar task.
+     */
+    public boolean hasSimilarTask(Class<? extends PendingTask> taskType, net.minecraft.world.item.ItemStack item, int storageIndex) {
         for (PendingTask task : tasks) {
-            if (task.getType() == type && 
+            if (taskType.isInstance(task) && 
                 studio.fantasyit.maid_storage_manager.util.ItemStackUtil.isSame(task.getRequestedItem(), item, false) &&
                 task.getTarget().isPresent() &&
                 task.getTarget().get().getPos().equals(getStoragePosForIndex(storageIndex))) {
@@ -140,7 +143,7 @@ public class TaskQueue {
             }
             
             TaskResult result = new TaskResult(
-                task.getType(),
+                task.getTypeName(),
                 com.github.fracture_hikari.maid_agent.util.ItemIdUtils.getId(task.getRequestedItem()),
                 task.getRequestedItem().getCount(),
                 actualCount,
@@ -194,8 +197,8 @@ public class TaskQueue {
             String status = result.success ? "Success" : "Failed";
             if (result.success) successCount++; else failCount++;
             
-            if (result.type == PendingTask.TaskType.EXPLORE_ALL || result.type == PendingTask.TaskType.EXPLORE) {
-                sb.append(String.format("%d. [%s] - %s\n", i + 1, result.type.name(), status));
+            if (result.typeName.equals(ExploreAllTask.TYPE_NAME) || result.typeName.equals(ExploreTask.TYPE_NAME)) {
+                sb.append(String.format("%d. [%s] - %s\n", i + 1, result.typeName, status));
                 if (result.message != null && !result.message.isEmpty()) {
                     sb.append(result.message).append("\n");
                 }
@@ -204,7 +207,7 @@ public class TaskQueue {
                 String countDisplay = result.actualCount > 0 ? " x" + result.actualCount : "";
                 
                 sb.append(String.format("%d. [%s] %s%s - %s",
-                    i + 1, result.type.name(), itemDisplay, countDisplay, status));
+                    i + 1, result.typeName, itemDisplay, countDisplay, status));
                 
                 if (result.message != null && !result.message.isEmpty()) {
                     sb.append(" (").append(result.message).append(")");
@@ -245,7 +248,7 @@ public class TaskQueue {
     }
     
     public record TaskResult(
-        PendingTask.TaskType type,
+        String typeName,
         String itemId,
         int requestedCount,
         int actualCount,

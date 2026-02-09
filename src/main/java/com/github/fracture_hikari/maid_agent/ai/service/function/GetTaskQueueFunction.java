@@ -1,5 +1,6 @@
 package com.github.fracture_hikari.maid_agent.ai.service.function;
 
+import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.IFunctionCall;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.response.ToolResponse;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.ObjectParameter;
@@ -56,10 +57,9 @@ public class GetTaskQueueFunction implements IFunctionCall<GetTaskQueueFunction.
         boolean hasContent = false;
         
         // Task Queue section
-        Optional<TaskQueue> queueOpt = TaskQueueHelper.getQueue(maid);
+        TaskQueue queue = TaskQueueHelper.getOrCreateQueue(maid);
         
-        if (queueOpt.isPresent() && !queueOpt.get().isEmpty()) {
-            TaskQueue queue = queueOpt.get();
+        if (!queue.isEmpty()) {
             hasContent = true;
             
             sb.append("## Task Queue\n");
@@ -68,8 +68,8 @@ public class GetTaskQueueFunction implements IFunctionCall<GetTaskQueueFunction.
             PendingTask current = queue.peek();
             if (current != null) {
                 sb.append(String.format("Current: %s %s\n",
-                        current.getType().name().toLowerCase(),
-                        com.github.fracture_hikari.maid_agent.util.ItemIdUtils.getId(current.getRequestedItem()).replace("minecraft:", "")
+                        current.getTypeName(),
+                        ItemIdUtils.getId(current.getRequestedItem()).replace("minecraft:", "")
                 ));
             }
             
@@ -84,10 +84,10 @@ public class GetTaskQueueFunction implements IFunctionCall<GetTaskQueueFunction.
             if (completed > 0) {
                 sb.append(String.format("Completed: %d task(s)\n", completed));
             }
-        } else if (queueOpt.isPresent() && queueOpt.get().getCompletedCount() > 0) {
+        } else if (queue.getCompletedCount() > 0) {
             // Show batch summary if tasks completed but queue empty
             hasContent = true;
-            sb.append(queueOpt.get().getBatchSummary()).append("\n");
+            sb.append(queue.getBatchSummary()).append("\n");
         }
         
         // Processing Jobs section
