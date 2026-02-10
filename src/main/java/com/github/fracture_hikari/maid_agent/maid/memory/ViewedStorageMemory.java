@@ -1,9 +1,7 @@
 package com.github.fracture_hikari.maid_agent.maid.memory;
 
-import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.entity.BlockEntity;
 
 import java.util.*;
 

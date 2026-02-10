@@ -4,8 +4,8 @@ import com.github.tartaricacid.touhoulittlemaid.ai.service.function.IFunctionCal
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.response.ToolResponse;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.ObjectParameter;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.Parameter;
-import com.github.tartaricacid.touhoulittlemaid.ai.service.llm.LLMConfig;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
+import com.github.tartaricacid.touhoulittlemaid.init.InitEntities;
 import com.mojang.serialization.Codec;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
@@ -72,7 +72,7 @@ public class ClearTasksFunction implements IFunctionCall<ClearTasksFunction.Para
         }
         
         // Clear movement memories
-        maid.getBrain().eraseMemory(com.github.tartaricacid.touhoulittlemaid.init.InitEntities.TARGET_POS.get());
+        maid.getBrain().eraseMemory(InitEntities.TARGET_POS.get());
         maid.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
         maid.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.LOOK_TARGET);
         

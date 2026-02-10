@@ -6,7 +6,6 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.init.InitSounds;
 import com.mojang.datafixers.util.Pair;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
-import com.github.fracture_hikari.maid_agent.maid.behavior.CollectMoveTask;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.entity.ai.behavior.BehaviorControl;

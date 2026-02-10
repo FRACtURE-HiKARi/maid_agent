@@ -17,7 +17,6 @@ import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.ExploreAllTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.item.ItemStack;
 
 /**
  * LLM function to discover nearby storage blocks.

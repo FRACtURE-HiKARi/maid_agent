@@ -1,8 +1,9 @@
 package com.github.fracture_hikari.maid_agent.maid.memory;
 
+import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
-import net.minecraftforge.registries.ForgeRegistries;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Represents a single item-to-slot mapping for processing recipes.
@@ -29,7 +30,7 @@ public record SlotMapping(
      * Get item ID for display/logging.
      */
     public String getItemId() {
-        return ForgeRegistries.ITEMS.getKey(item.getItem()).toString();
+        return ItemIdUtils.getId(item);
     }
     
     /**
@@ -40,7 +41,7 @@ public record SlotMapping(
     }
     
     @Override
-    public String toString() {
+    public @NotNull String toString() {
         return String.format("SlotMapping{slot=%d, item=%s x%d, at=%s}", 
                 slot, getItemId(), getCount(), workstation.toShortString());
     }

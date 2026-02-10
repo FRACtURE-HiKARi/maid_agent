@@ -3,7 +3,6 @@ package com.github.fracture_hikari.maid_agent.maid.behavior;
 import com.github.fracture_hikari.maid_agent.maid.memory.ExploreAllTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
-import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
 import net.minecraft.core.BlockPos;

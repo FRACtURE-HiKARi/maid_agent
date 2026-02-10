@@ -1,6 +1,5 @@
 package com.github.fracture_hikari.maid_agent.maid.memory;
 
-import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 

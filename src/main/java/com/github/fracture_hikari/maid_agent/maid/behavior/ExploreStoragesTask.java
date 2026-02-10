@@ -6,7 +6,7 @@ import com.github.fracture_hikari.maid_agent.maid.memory.ExploreAllTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
 import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
-import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
+import com.github.fracture_hikari.maid_agent.maid.memory.WorkBlockTarget;
 import com.github.fracture_hikari.maid_agent.util.InventoryUtils;
 import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.fracture_hikari.maid_agent.util.TaskQueueHelper;
@@ -114,12 +114,8 @@ public class ExploreStoragesTask extends MaidMoveToBlockTask {
         // Check if already visited in memory
         ViewedStorageMemory memory = MemoryUtil.getOrCreateViewedStorageMemory(maid);
         WorkBlockTarget ourTarget = new WorkBlockTarget(msmTarget);
-        
-        if (memory.hasVisited(ourTarget)) {
-            return false;
-        }
-        
-        return true;
+
+        return !memory.hasVisited(ourTarget);
     }
     
     @Override

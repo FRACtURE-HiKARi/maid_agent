@@ -23,6 +23,7 @@ import com.github.fracture_hikari.maid_agent.ai.service.llm.gemini.request.*;
 import com.github.fracture_hikari.maid_agent.ai.service.llm.gemini.response.GeminiResponse;
 import net.minecraft.server.level.ServerPlayer;
 import org.apache.commons.lang3.StringUtils;
+import org.jetbrains.annotations.NotNull;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -31,6 +32,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Gemini API client using HTTP requests.
@@ -98,16 +100,7 @@ public final class LLMGeminiClient implements LLMClient {
         // Build a map of toolCallId -> functionName from assistant messages
         // This is needed because Gemini expects function name in functionResponse,
         // but TLM stores only the toolCallId for TOOL role messages
-        java.util.Map<String, String> toolCallIdToFunctionName = new java.util.HashMap<>();
-        for (LLMMessage message : messages) {
-            if (message.role() == Role.ASSISTANT && message.toolCalls() != null) {
-                for (ToolCall toolCall : message.toolCalls()) {
-                    if (toolCall.getId() != null && toolCall.getFunction() != null) {
-                        toolCallIdToFunctionName.put(toolCall.getId(), toolCall.getFunction().getName());
-                    }
-                }
-            }
-        }
+        Map<String, String> toolCallIdToFunctionName = getIdToFunctionName(messages);
 
         // Extract system instruction and add other messages
         for (LLMMessage message : messages) {
@@ -146,6 +139,20 @@ public final class LLMGeminiClient implements LLMClient {
         }
 
         return request;
+    }
+
+    private static @NotNull Map<String, String> getIdToFunctionName(List<LLMMessage> messages) {
+        Map<String, String> toolCallIdToFunctionName = new java.util.HashMap<>();
+        for (LLMMessage message : messages) {
+            if (message.role() == Role.ASSISTANT && message.toolCalls() != null) {
+                for (ToolCall toolCall : message.toolCalls()) {
+                    if (toolCall.getId() != null && toolCall.getFunction() != null) {
+                        toolCallIdToFunctionName.put(toolCall.getId(), toolCall.getFunction().getName());
+                    }
+                }
+            }
+        }
+        return toolCallIdToFunctionName;
     }
 
 

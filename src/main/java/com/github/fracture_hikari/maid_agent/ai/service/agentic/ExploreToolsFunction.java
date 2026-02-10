@@ -35,7 +35,7 @@ public class ExploreToolsFunction implements IFunctionCall<ExploreToolsFunction.
         // Build category list dynamically
         StringBuilder categories = new StringBuilder();
         for (ToolCategory cat : ToolCategory.values()) {
-            if (categories.length() > 0) categories.append(", ");
+            if (!categories.isEmpty()) categories.append(", ");
             categories.append(cat.getId()).append(" (").append(cat.getDescription()).append(")");
         }
         

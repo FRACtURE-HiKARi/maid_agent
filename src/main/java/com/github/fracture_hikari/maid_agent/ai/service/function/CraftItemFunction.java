@@ -5,7 +5,7 @@ import com.github.fracture_hikari.maid_agent.config.CraftConfig;
 import com.github.fracture_hikari.maid_agent.config.JeiConfig;
 import com.github.fracture_hikari.maid_agent.maid.memory.SlotMapping;
 import com.github.fracture_hikari.maid_agent.recipe.CraftingTreeEvaluator;
-import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
+import com.github.fracture_hikari.maid_agent.maid.memory.WorkBlockTarget;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.CraftTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.ProcessTask;
@@ -23,7 +23,6 @@ import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.param
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
@@ -31,7 +30,6 @@ import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.SmeltingRecipe;
 import net.minecraftforge.registries.ForgeRegistries;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
@@ -295,7 +293,7 @@ public class CraftItemFunction implements IFunctionCall<CraftItemFunction.Params
         
         ItemStack result = recipe.getResultItem(level.registryAccess());
         sb.append(String.format("\"output\": \"%s\", \"count\": %d}",
-                ForgeRegistries.ITEMS.getKey(result.getItem()).toString(),
+                ItemIdUtils.getId(result),
                 result.getCount() * count));
     }
     

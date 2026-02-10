@@ -9,8 +9,9 @@ import com.github.tartaricacid.touhoulittlemaid.ai.service.llm.openai.request.Ch
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.Dynamic;
+import com.mojang.serialization.JsonOps;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 /**
@@ -59,19 +60,19 @@ public class RunToolFunction implements IFunctionCall<RunToolFunction.Params> {
         // Use PASSTHROUGH for params to accept any JSON structure
         return RecordCodecBuilder.create(instance -> instance.group(
             Codec.STRING.fieldOf("tool").forGetter(Params::tool),
-            Codec.PASSTHROUGH.optionalFieldOf("params", new com.mojang.serialization.Dynamic<>(
-                    com.mojang.serialization.JsonOps.INSTANCE, new JsonObject()))
+            Codec.PASSTHROUGH.optionalFieldOf("params", new Dynamic<>(
+                    JsonOps.INSTANCE, new JsonObject()))
                 .xmap(
                     dynamic -> {
                         // Convert Dynamic to JsonObject
-                        JsonElement elem = dynamic.convert(com.mojang.serialization.JsonOps.INSTANCE).getValue();
+                        JsonElement elem = dynamic.convert(JsonOps.INSTANCE).getValue();
                         if (elem.isJsonObject()) {
                             return elem.getAsJsonObject();
                         }
                         return new JsonObject();
                     },
-                    jsonObj -> new com.mojang.serialization.Dynamic<>(
-                        com.mojang.serialization.JsonOps.INSTANCE, jsonObj)
+                    jsonObj -> new Dynamic<>(
+                        JsonOps.INSTANCE, jsonObj)
                 )
                 .forGetter(Params::params)
         ).apply(instance, Params::new));

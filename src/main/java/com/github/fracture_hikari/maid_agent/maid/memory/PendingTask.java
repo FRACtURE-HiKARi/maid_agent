@@ -1,8 +1,6 @@
 package com.github.fracture_hikari.maid_agent.maid.memory;
 
-import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
-import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;

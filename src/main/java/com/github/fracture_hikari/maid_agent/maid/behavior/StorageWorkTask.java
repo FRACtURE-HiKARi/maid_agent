@@ -1,13 +1,12 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
-import com.github.fracture_hikari.maid_agent.maid.memory.ExploreTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.FetchTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.StoreTask;
 import com.github.fracture_hikari.maid_agent.util.InventoryUtils;
 import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
-import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
+import com.github.fracture_hikari.maid_agent.maid.memory.WorkBlockTarget;
 import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;

@@ -1,7 +1,7 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
-import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
+import com.github.fracture_hikari.maid_agent.maid.memory.WorkBlockTarget;
 import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.tartaricacid.touhoulittlemaid.entity.ai.brain.task.MaidCheckRateTask;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;

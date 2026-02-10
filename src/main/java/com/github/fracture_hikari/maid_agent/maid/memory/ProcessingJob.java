@@ -5,7 +5,6 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 
-import javax.swing.text.html.parser.Entity;
 import java.util.UUID;
 
 /**

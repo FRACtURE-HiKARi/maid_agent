@@ -1,12 +1,13 @@
 package com.github.fracture_hikari.maid_agent.util;
 
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import javax.annotation.Nullable;
+import java.util.Objects;
 
 /**
  * Utility class for item ID operations.
@@ -21,7 +22,7 @@ public final class ItemIdUtils {
      * Example: "minecraft:diamond"
      */
     public static String getId(ItemStack stack) {
-        return stack.getItem().builtInRegistryHolder().key().location().toString();
+        return Objects.requireNonNull(ForgeRegistries.ITEMS.getKey(stack.getItem())).toString();
     }
     
     /**
@@ -29,7 +30,7 @@ public final class ItemIdUtils {
      * Example: "minecraft:diamond"
      */
     public static String getId(Item item) {
-        return BuiltInRegistries.ITEM.getKey(item).toString();
+        return Objects.requireNonNull(ForgeRegistries.ITEMS.getKey(item)).toString();
     }
     
     /**
@@ -48,10 +49,12 @@ public final class ItemIdUtils {
     @Nullable
     public static Item getItem(String itemId) {
         ResourceLocation rl = parse(itemId);
-        if (rl == null || !BuiltInRegistries.ITEM.containsKey(rl)) {
+        if (!ForgeRegistries.ITEMS.containsKey(rl)) {
+            return null;
+        } else if (rl == null) {
             return null;
         }
-        return BuiltInRegistries.ITEM.get(rl);
+        return ForgeRegistries.ITEMS.getValue(rl);
     }
     
     /**
@@ -78,7 +81,7 @@ public final class ItemIdUtils {
      */
     public static boolean isValid(String itemId) {
         ResourceLocation rl = parse(itemId);
-        return rl != null && BuiltInRegistries.ITEM.containsKey(rl);
+        return rl != null && ForgeRegistries.ITEMS.containsKey(rl);
     }
     
     /**

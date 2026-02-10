@@ -111,12 +111,12 @@ public class ClaudeResponse {
         StringBuilder sb = new StringBuilder();
         for (ClaudeContent c : content) {
             if (c.isText() && c.getText() != null) {
-                if (sb.length() > 0) {
+                if (!sb.isEmpty()) {
                     sb.append("\n");
                 }
                 sb.append(c.getText());
             }
         }
-        return sb.length() > 0 ? sb.toString() : null;
+        return !sb.isEmpty() ? sb.toString() : null;
     }
 }

@@ -1,6 +1,5 @@
 package com.github.fracture_hikari.maid_agent.maid.behavior;
 
-import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
 import com.github.fracture_hikari.maid_agent.util.MemoryUtil;
 import com.github.fracture_hikari.maid_agent.maid.memory.ProcessingJob;
 import com.github.fracture_hikari.maid_agent.util.InventoryUtils;

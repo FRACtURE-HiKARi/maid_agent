@@ -1,7 +1,8 @@
 package com.github.fracture_hikari.maid_agent.maid.memory;
 
 import com.github.fracture_hikari.maid_agent.MaidAgent;
-import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
+import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
+import com.github.fracture_hikari.maid_agent.util.ItemIdUtils;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.core.BlockPos;
 import org.jetbrains.annotations.Nullable;
@@ -118,7 +119,7 @@ public class TaskQueue {
     
     private BlockPos getStoragePosForIndex(int storageIndex) {
         return maid.getBrain()
-                .getMemory(com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry.VIEWED_STORAGE.get())
+                .getMemory(MemoryModuleRegistry.VIEWED_STORAGE.get())
                 .flatMap(mem -> mem.getStorageByIndex(storageIndex))
                 .map(WorkBlockTarget::getPos)
                 .orElse(null);
@@ -144,7 +145,7 @@ public class TaskQueue {
             
             TaskResult result = new TaskResult(
                 task.getTypeName(),
-                com.github.fracture_hikari.maid_agent.util.ItemIdUtils.getId(task.getRequestedItem()),
+                ItemIdUtils.getId(task.getRequestedItem()),
                 task.getRequestedItem().getCount(),
                 actualCount,
                 success,

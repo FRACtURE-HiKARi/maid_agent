@@ -1,4 +1,4 @@
-package com.github.fracture_hikari.maid_agent.storage;
+package com.github.fracture_hikari.maid_agent.maid.memory;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;

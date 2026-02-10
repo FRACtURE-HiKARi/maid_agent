@@ -1,5 +1,6 @@
 package com.github.fracture_hikari.maid_agent.ai.service.function;
 
+import com.github.fracture_hikari.maid_agent.compat.Integrations;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.IFunctionCall;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.response.ToolResponse;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.ArrayParameter;
@@ -7,21 +8,20 @@ import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.param
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.ObjectParameter;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.Parameter;
 import com.github.tartaricacid.touhoulittlemaid.ai.service.function.schema.parameter.StringParameter;
-import com.github.tartaricacid.touhoulittlemaid.ai.service.llm.LLMConfig;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.github.fracture_hikari.maid_agent.MaidAgent;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
-import com.github.fracture_hikari.maid_agent.storage.WorkBlockTarget;
+import com.github.fracture_hikari.maid_agent.maid.memory.WorkBlockTarget;
 import com.github.fracture_hikari.maid_agent.maid.memory.PendingTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.FetchTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.StoreTask;
 import com.github.fracture_hikari.maid_agent.maid.memory.TaskQueue;
 import com.github.fracture_hikari.maid_agent.maid.memory.ViewedStorageMemory;
 import com.github.fracture_hikari.maid_agent.util.TaskQueueHelper;
+import org.jetbrains.annotations.NotNull;
 
-import javax.tools.Tool;
 import java.util.List;
 import java.util.Optional;
 
@@ -53,30 +53,8 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
     @Override
     public Parameter addParameters(ObjectParameter root, EntityMaid maid) {
         // Define the operation object structure
-        ObjectParameter operationSchema = ObjectParameter.create();
-        
-        StringParameter actionParam = StringParameter.create();
-        actionParam.setDescription("'fetch' to get items from storage, 'store' to put items into storage");
-        actionParam.addEnumValues("fetch", "store");
-        operationSchema.addProperties("action", actionParam);
-        
-        IntegerParameter storageIndexParam = IntegerParameter.create();
-        storageIndexParam.setDescription("Index of storage from get_nearby_storage result (0, 1, 2...)");
-        storageIndexParam.setMinimum(0);
-        storageIndexParam.setMaximum(20);
-        operationSchema.addProperties("storage_index", storageIndexParam);
-        
-        StringParameter itemParam = StringParameter.create();
-        itemParam.setDescription("Item ID in namespace:name format (e.g. minecraft:torch)");
-        itemParam.setMinLength(1);
-        operationSchema.addProperties("item_id", itemParam);
-        
-        IntegerParameter countParam = IntegerParameter.create();
-        countParam.setDescription("Number of items. Default: 1 for fetch, all for store.");
-        countParam.setMinimum(0);
-        countParam.setMaximum(2304);
-        operationSchema.addProperties("count", countParam);
-        
+        ObjectParameter operationSchema = getOperationSchema();
+
         // Operations array
         ArrayParameter operationsArray = ArrayParameter.create();
         operationsArray.setDescription("""
@@ -91,6 +69,33 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
         root.addProperties("operations", operationsArray);
         
         return root;
+    }
+
+    private static @NotNull ObjectParameter getOperationSchema() {
+        ObjectParameter operationSchema = ObjectParameter.create();
+
+        StringParameter actionParam = StringParameter.create();
+        actionParam.setDescription("'fetch' to get items from storage, 'store' to put items into storage");
+        actionParam.addEnumValues("fetch", "store");
+        operationSchema.addProperties("action", actionParam);
+
+        IntegerParameter storageIndexParam = IntegerParameter.create();
+        storageIndexParam.setDescription("Index of storage from get_nearby_storage result (0, 1, 2...)");
+        storageIndexParam.setMinimum(0);
+        storageIndexParam.setMaximum(20);
+        operationSchema.addProperties("storage_index", storageIndexParam);
+
+        StringParameter itemParam = StringParameter.create();
+        itemParam.setDescription("Item ID in namespace:name format (e.g. minecraft:torch)");
+        itemParam.setMinLength(1);
+        operationSchema.addProperties("item_id", itemParam);
+
+        IntegerParameter countParam = IntegerParameter.create();
+        countParam.setDescription("Number of items. Default: 1 for fetch, all for store.");
+        countParam.setMinimum(0);
+        countParam.setMaximum(2304);
+        operationSchema.addProperties("count", countParam);
+        return operationSchema;
     }
 
     @Override
@@ -115,9 +120,9 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
     @Override
     public ToolResponse onToolCall(Params params, EntityMaid maid, String toolCallId) {
         // Storage operations require maid_storage_manager
-        if (!com.github.fracture_hikari.maid_agent.compat.Integrations.maidStorageManager()) {
+        if (!Integrations.maidStorageManager()) {
             return new ToolResponse(
-                    com.github.fracture_hikari.maid_agent.compat.Integrations.getMsmRequiredMessage());
+                    Integrations.getMsmRequiredMessage());
         }
         
         List<Operation> operations = params.operations();
