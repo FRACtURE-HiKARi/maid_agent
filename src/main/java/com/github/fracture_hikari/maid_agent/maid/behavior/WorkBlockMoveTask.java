@@ -49,7 +49,7 @@ public class WorkBlockMoveTask extends AbstractMoveTask {
         // Log intent (target pos might be null, which is fine for generic search)
         BlockPos pos = currentMove.getTarget().get().getPos();
         String targetStr = (pos != null) ? pos.toShortString() : "generic:" + currentMove.getTarget().get().getType();
-        MaidAgent.LOGGER.info("TaskMoveTask: Setting up movement for {} to {}", currentMove.getTypeName(), targetStr);
+        MaidAgent.LOGGER.debug("TaskMoveTask: Setting up movement for {} to {}", currentMove.getTypeName(), targetStr);
         return true;
     }
 

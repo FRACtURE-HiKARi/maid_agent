@@ -34,7 +34,7 @@ public class MemoryUtil {
         Optional<TaskQueue> queueOpt = maid.getBrain().getMemory(MemoryModuleRegistry.TASK_QUEUE.get());
         queueOpt.ifPresent(queue -> {
             if (success) {
-                MaidAgent.LOGGER.info("task {} success with {}", task, message);
+                MaidAgent.LOGGER.debug("task {} success with {}", task, message);
             } else {
                 MaidAgent.LOGGER.warn("task {} fails with {}", task, message);
             }

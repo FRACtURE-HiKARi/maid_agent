@@ -58,7 +58,7 @@ public class ClearTasksFunction implements IFunctionCall<ClearTasksFunction.Para
             TaskQueue queue = queueOpt.get();
             tasksCleared = queue.size();
             queue.clear();
-            MaidAgent.LOGGER.info("ClearTasksFunction: Cleared {} tasks from queue", tasksCleared);
+            MaidAgent.LOGGER.debug("ClearTasksFunction: Cleared {} tasks from queue", tasksCleared);
         }
         
         // Clear processing jobs
@@ -68,7 +68,7 @@ public class ClearTasksFunction implements IFunctionCall<ClearTasksFunction.Para
             JobMemory memory = memoryOpt.get();
             jobsCleared = memory.getActiveJobs().size();
             memory.clear();
-            MaidAgent.LOGGER.info("ClearTasksFunction: Cleared {} processing jobs", jobsCleared);
+            MaidAgent.LOGGER.debug("ClearTasksFunction: Cleared {} processing jobs", jobsCleared);
         }
         
         // Clear movement memories

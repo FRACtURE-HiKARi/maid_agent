@@ -116,7 +116,7 @@ public class InsertWorkTask extends AbstractWorkTask {
         ProcessingJob job = new ProcessingJob(maid, machinePos, FURNACE_OUTPUT_SLOT, expectedOutput, task);
         memory.addJob(job);
 
-        MaidAgent.LOGGER.info("Started processing job: {} input ({}), {} fuel, estimated {} ticks", 
+        MaidAgent.LOGGER.debug("Started processing job: {} input ({}), {} fuel, estimated {} ticks",
                 inputInserted, inputItemId, fuelInserted, estimatedTicks);
         
         task.setActualCount(inputInserted);

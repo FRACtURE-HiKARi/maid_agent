@@ -70,8 +70,8 @@ public final class LLMGeminiClient implements LLMClient {
         String requestJson = GSON.toJson(geminiRequest);
 
         if (TouhouLittleMaid.DEBUG) {
-            MaidAgent.LOGGER.info("Chat messages: {}", messages);
-            MaidAgent.LOGGER.info("Gemini Request: {}", requestJson);
+            MaidAgent.LOGGER.debug("Chat messages: {}", messages);
+            MaidAgent.LOGGER.debug("Gemini Request: {}", requestJson);
         }
 
         HttpRequest.Builder builder = HttpRequest.newBuilder()
@@ -179,7 +179,7 @@ public final class LLMGeminiClient implements LLMClient {
                         HttpResponse<String> response, Throwable throwable, HttpRequest request) {
         this.<GeminiResponse>handleResponse(callback, response, throwable, request, geminiResponse -> {
             if (TouhouLittleMaid.DEBUG) {
-                MaidAgent.LOGGER.info("Gemini Response: {}", GSON.toJson(geminiResponse));
+                MaidAgent.LOGGER.debug("Gemini Response: {}", GSON.toJson(geminiResponse));
             }
 
             // token counting

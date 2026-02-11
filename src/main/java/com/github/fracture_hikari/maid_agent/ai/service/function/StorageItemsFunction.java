@@ -193,7 +193,7 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
             PendingTask task = isFetch ? new FetchTask(stack, target) : new StoreTask(stack, target);
             tasksToQueue.add(task);
             
-            MaidAgent.LOGGER.info("Prepared operation: {} {} from storage[{}]", 
+            MaidAgent.LOGGER.debug("Prepared operation: {} {} from storage[{}]",
                     isFetch ? "FETCH" : "STORE", op.itemId(), op.storageIndex());
         }
         
@@ -210,7 +210,7 @@ public class StorageItemsFunction implements IFunctionCall<StorageItemsFunction.
                 TaskQueueHelper.setMovementTarget(maid, target.getPos()));
         }
         
-        MaidAgent.LOGGER.info("Queued {} operations for toolCallId {}", tasksToQueue.size(), toolCallId);
+        MaidAgent.LOGGER.debug("Queued {} operations for toolCallId {}", tasksToQueue.size(), toolCallId);
         
         // Return PENDING to wait for async completion
         return ToolResponse.PENDING;

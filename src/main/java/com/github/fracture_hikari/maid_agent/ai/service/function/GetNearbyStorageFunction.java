@@ -105,7 +105,7 @@ public class GetNearbyStorageFunction implements IFunctionCall<GetNearbyStorageF
         
         queue.enqueue(exploreTask);
         
-        MaidAgent.LOGGER.info("Launched EXPLORE_ALL task with radius {} for storage discovery", radius);
+        MaidAgent.LOGGER.debug("Launched EXPLORE_ALL task with radius {} for storage discovery", radius);
         
         return ToolResponse.PENDING;
     }

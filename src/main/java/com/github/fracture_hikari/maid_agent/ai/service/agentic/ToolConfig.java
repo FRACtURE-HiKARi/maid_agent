@@ -109,7 +109,7 @@ public class ToolConfig {
             }
             
             loaded = true;
-            MaidAgent.LOGGER.info("Loaded tool config from {} ({} tools configured)", configPath, toolEnabled.size());
+            MaidAgent.LOGGER.debug("Loaded tool config from {} ({} tools configured)", configPath, toolEnabled.size());
         } catch (IOException e) {
             MaidAgent.LOGGER.error("Failed to load tool config: {}", e.getMessage());
             loaded = true;  // Mark as loaded to prevent repeated attempts
@@ -147,7 +147,7 @@ public class ToolConfig {
             json.addProperty("require_exploration_first", false);
             
             Files.writeString(configPath, GSON.toJson(json));
-            MaidAgent.LOGGER.info("Generated tool config template at {} ({} tools)", configPath, toolsArray.size());
+            MaidAgent.LOGGER.debug("Generated tool config template at {} ({} tools)", configPath, toolsArray.size());
             
             // Mark all tools as enabled by default
             for (AgenticTool<?> tool : registry.getAllTools()) {

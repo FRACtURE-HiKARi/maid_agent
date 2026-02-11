@@ -66,8 +66,8 @@ public final class LLMClaudeClient implements LLMClient {
         String requestJson = GSON.toJson(claudeRequest);
 
         if (TouhouLittleMaid.DEBUG) {
-            MaidAgent.LOGGER.info("Claude Request URL: {}", url);
-            MaidAgent.LOGGER.info("Claude Request: {}", requestJson);
+            MaidAgent.LOGGER.debug("Claude Request URL: {}", url);
+            MaidAgent.LOGGER.debug("Claude Request: {}", requestJson);
         }
 
         HttpRequest.Builder builder = HttpRequest.newBuilder()
@@ -159,7 +159,7 @@ public final class LLMClaudeClient implements LLMClient {
                         HttpResponse<String> response, Throwable throwable, HttpRequest request) {
         this.<ClaudeResponse>handleResponse(callback, response, throwable, request, claudeResponse -> {
             if (TouhouLittleMaid.DEBUG) {
-                MaidAgent.LOGGER.info("Claude Response: {}", GSON.toJson(claudeResponse));
+                MaidAgent.LOGGER.debug("Claude Response: {}", GSON.toJson(claudeResponse));
             }
 
             // Handle token counting

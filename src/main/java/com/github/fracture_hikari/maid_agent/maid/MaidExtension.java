@@ -15,6 +15,7 @@ import com.github.fracture_hikari.maid_agent.ai.service.llm.gemini.LLMGeminiSite
 import com.github.fracture_hikari.maid_agent.maid.task.AgentTask;
 import com.github.fracture_hikari.maid_agent.registry.MemoryModuleRegistry;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+import studio.fantasyit.maid_storage_manager.MaidStorageManager;
 
 import java.util.List;
 
@@ -54,14 +55,14 @@ public class MaidExtension implements ILittleMaid {
         registry.register(FunctionCallAdapter.wrap(new GetNearbyStorageFunction())
             .category(ToolCategory.STORAGE)
             .shortDescription("Discover nearby storage blocks")
-            .policy(ToolPolicy.chain(configCheck, ToolPolicy.requireMod("maid_storage_manager")))
+            .policy(ToolPolicy.chain(configCheck, ToolPolicy.requireMod(MaidStorageManager.MODID)))
             .build());
         
         registry.register(FunctionCallAdapter.wrap(new StorageItemsFunction())
             .category(ToolCategory.STORAGE)
             .shortDescription("Fetch/store items in containers")
             .prerequisites("get_nearby_storage")
-            .policy(ToolPolicy.chain(configCheck, ToolPolicy.requireMod("maid_storage_manager")))
+            .policy(ToolPolicy.chain(configCheck, ToolPolicy.requireMod(MaidStorageManager.MODID)))
             .build());
         
         // Crafting category  
